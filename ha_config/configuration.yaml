@@ -1,0 +1,82 @@
+input_number:
+  somma_dei_pesi:
+    name: Soglia Pesi
+    min: 0
+    max: 10
+    step: 0.1
+    mode: slider
+  peso_a_1:
+    name: Peso A1
+    min: 0
+    max: 5
+    step: 0.5
+    mode: slider
+  peso_a_2:
+    name: Peso A2
+    min: 0
+    max: 5
+    step: 0.5
+    mode: slider
+  delta_squadra_giorno_a_1:
+    name: Delta Squadra Giorno A1
+    min: 0
+    max: 2
+    step: 0.1
+    mode: slider
+  delta_squadra_giorno_a_2:
+    name: Delta Squadra Giorno A2
+    min: 0
+    max: 2
+    step: 0.1
+    mode: slider
+  delta_squadra_notte_a_1:
+    name: Delta Squadra Notte A1
+    min: 0
+    max: 2
+    step: 0.1
+    mode: slider
+  delta_squadra_notte_a_2:
+    name: Delta Squadra Notte A2
+    min: 0
+    max: 2
+    step: 0.1
+    mode: slider
+  delta_spegnimento_giorno_a_1:
+    name: Delta Spegnimento Giorno A1
+    min: -1
+    max: 1
+    step: 0.1
+    mode: slider
+  delta_spegnimento_giorno_a_2:
+    name: Delta Spegnimento Giorno A2
+    min: -1
+    max: 1
+    step: 0.1
+    mode: slider
+  delta_spegnimento_notte_a_1:
+    name: Delta Spegnimento Notte A1
+    min: -1
+    max: 1
+    step: 0.1
+    mode: slider
+  delta_spegnimento_notte_a_2:
+    name: Delta Spegnimento Notte A2
+    min: -1
+    max: 1
+    step: 0.1
+    mode: slider
+input_boolean:
+  riscaldamento_centralizzato_attivo:
+    name: Attivo Centralizzato
+  inclusione_a_1:
+    name: Inclusione A1
+  inclusione_a_2:
+    name: Inclusione A2
+template:
+  - sensor:
+      - name: "Coerenza Zona 1 A1"
+        state: >-
+          {{ 'unavailable' if states('sensor.termostato_autonomo_1_ultimo_messaggio_esp_now') == 'unavailable' or states('binary_sensor.collettore_6_zone_feedback_zona_1') == 'unavailable' else ('ok' if ('ZONA_ON' in states('sensor.termostato_autonomo_1_ultimo_messaggio_esp_now') and states('binary_sensor.collettore_6_zone_feedback_zona_1') == 'on') or ('ZONA_OFF' in states('sensor.termostato_autonomo_1_ultimo_messaggio_esp_now') and states('binary_sensor.collettore_6_zone_feedback_zona_1') == 'off') else ('valvola_aperta' if states('binary_sensor.collettore_6_zone_feedback_zona_1') == 'on' else 'valvola_chiusa')) }}
+      - name: "Coerenza Zona 2 A2"
+        state: >-
+          {{ 'unavailable' if states('sensor.termostato_autonomo_2_ultimo_messaggio_esp_now') == 'unavailable' or states('binary_sensor.collettore_6_zone_feedback_zona_2') == 'unavailable' else ('ok' if ('ZONA_ON' in states('sensor.termostato_autonomo_2_ultimo_messaggio_esp_now') and states('binary_sensor.collettore_6_zone_feedback_zona_2') == 'on') or ('ZONA_OFF' in states('sensor.termostato_autonomo_2_ultimo_messaggio_esp_now') and states('binary_sensor.collettore_6_zone_feedback_zona_2') == 'off') else ('valvola_aperta' if states('binary_sensor.collettore_6_zone_feedback_zona_2') == 'on' else 'valvola_chiusa')) }}

@@ -1,0 +1,28 @@
+riscaldamento_centralizzato:
+  module: riscaldamento
+  class: riscaldamento_centralizzato
+  numero_zone: 2
+  soglia_pesi: input_number.somma_dei_pesi
+  attivo: input_boolean.riscaldamento_centralizzato_attivo
+  zona1:
+    clima: climate.termostato_autonomo_1_climatizzazione
+    temp_salvata: number.termostato_autonomo_1_temperatura_salvata
+    peso: input_number.peso_a_1
+    inclusione: input_boolean.inclusione_a_1
+    delta_squadra_giorno: input_number.delta_squadra_giorno_a_1
+    delta_squadra_notte: input_number.delta_squadra_notte_a_1
+    delta_spegnimento_giorno: input_number.delta_spegnimento_giorno_a_1
+    delta_spegnimento_notte: input_number.delta_spegnimento_notte_a_1
+    rinnovo_modalita: button.termostato_autonomo_1_rinnova_modalita_centralizzata
+    modalita_centralizzata: switch.termostato_autonomo_1_modalita_centralizzata
+  zona2:
+    clima: climate.termostato_autonomo_2_climatizzazione
+    temp_salvata: number.termostato_autonomo_2_temperatura_salvata
+    peso: input_number.peso_a_2
+    inclusione: input_boolean.inclusione_a_2
+    delta_squadra_giorno: input_number.delta_squadra_giorno_a_2
+    delta_squadra_notte: input_number.delta_squadra_notte_a_2
+    delta_spegnimento_giorno: input_number.delta_spegnimento_giorno_a_2
+    delta_spegnimento_notte: input_number.delta_spegnimento_notte_a_2
+    rinnovo_modalita: button.termostato_autonomo_2_rinnova_modalita_centralizzata
+    modalita_centralizzata: switch.termostato_autonomo_2_modalita_centralizzata

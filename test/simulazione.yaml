@@ -1,0 +1,141 @@
+# SIMULAZIONE per test nell'HA virtuale (nessun dispositivo reale).
+# Da incollare in configuration.yaml JUNTO al blocco generato in
+# ha_config/configuration.yaml. Simula 2 termostati (termostato_autonomo_1/2).
+
+input_number:
+  sim_temp1:
+    name: Sim Temp Reale 1
+    min: 5
+    max: 35
+    step: 0.1
+    initial: 20
+    mode: box
+  sim_temp2:
+    name: Sim Temp Reale 2
+    min: 5
+    max: 35
+    step: 0.1
+    initial: 20
+    mode: box
+  sim_target1:
+    name: Sim Target 1
+    min: 5
+    max: 35
+    step: 0.1
+    initial: 20
+    mode: box
+  sim_target2:
+    name: Sim Target 2
+    min: 5
+    max: 35
+    step: 0.1
+    initial: 20
+    mode: box
+
+input_boolean:
+  sim_heat1:
+    name: Sim Riscaldamento 1
+  sim_heat2:
+    name: Sim Riscaldamento 2
+
+template:
+  - number:
+      - name: "Termostato Autonomo 1 Temperatura Salvata"
+        unique_id: sim_n1_salvata
+        min: 7
+        max: 35
+        step: 0.1
+        unit_of_measurement: "\u00b0C"
+        state: "{{ states('input_number.sim_target1') }}"
+        set_value:
+          - service: input_number.set_value
+            data:
+              entity_id: input_number.sim_target1
+              value: "{{ value }}"
+      - name: "Termostato Autonomo 2 Temperatura Salvata"
+        unique_id: sim_n2_salvata
+        min: 7
+        max: 35
+        step: 0.1
+        unit_of_measurement: "\u00b0C"
+        state: "{{ states('input_number.sim_target2') }}"
+        set_value:
+          - service: input_number.set_value
+            data:
+              entity_id: input_number.sim_target2
+              value: "{{ value }}"
+  - switch:
+      - name: "Termostato Autonomo 1 Modalit\u00e0 Centralizzata"
+        unique_id: sim_s1_mod
+        state: "off"
+        turn_on:
+          - logger.log: "SIM: modalita centralizzata 1 ON"
+        turn_off:
+          - logger.log: "SIM: modalita centralizzata 1 OFF"
+      - name: "Termostato Autonomo 2 Modalit\u00e0 Centralizzata"
+        unique_id: sim_s2_mod
+        state: "off"
+        turn_on:
+          - logger.log: "SIM: modalita centralizzata 2 ON"
+        turn_off:
+          - logger.log: "SIM: modalita centralizzata 2 OFF"
+  - button:
+      - name: "Termostato Autonomo 1 Rinnova Modalit\u00e0 Centralizzata"
+        unique_id: sim_b1_rinnovo
+        press:
+          - logger.log: "SIM: rinnovo 1 premuto"
+      - name: "Termostato Autonomo 2 Rinnova Modalit\u00e0 Centralizzata"
+        unique_id: sim_b2_rinnovo
+        press:
+          - logger.log: "SIM: rinnovo 2 premuto"
+  - sensor:
+      - name: "Termostato Autonomo 1 Ultimo Messaggio Esp Now"
+        unique_id: sim_s1_msg
+        state: "ZONA_OFF"
+      - name: "Termostato Autonomo 2 Ultimo Messaggio Esp Now"
+        unique_id: sim_s2_msg
+        state: "ZONA_OFF"
+  - binary_sensor:
+      - name: "Collettore 6 Zone Feedback Zona 1"
+        unique_id: sim_f1_fb
+        state: "off"
+      - name: "Collettore 6 Zone Feedback Zona 2"
+        unique_id: sim_f2_fb
+        state: "off"
+  - climate:
+      - name: "Termostato Autonomo 1 Climatizzazione"
+        unique_id: sim_c1_clima
+        hvac_modes:
+          - "off"
+          - heat
+          - auto
+        current_temperature: "{{ states('input_number.sim_temp1') | float(20) }}"
+        temperature: "{{ states('input_number.sim_target1') | float(20) }}"
+        hvac_action: "{{ 'heating' if is_state('input_boolean.sim_heat1', 'on') else 'idle' }}"
+        set_temperature:
+          - service: input_number.set_value
+            data:
+              entity_id: input_number.sim_target1
+              value: "{{ temperature }}"
+        set_hvac_mode:
+          - service: input_boolean.turn_{{ 'on' if hvac_mode in ['heat', 'auto'] else 'off' }}
+            data:
+              entity_id: input_boolean.sim_heat1
+      - name: "Termostato Autonomo 2 Climatizzazione"
+        unique_id: sim_c2_clima
+        hvac_modes:
+          - "off"
+          - heat
+          - auto
+        current_temperature: "{{ states('input_number.sim_temp2') | float(20) }}"
+        temperature: "{{ states('input_number.sim_target2') | float(20) }}"
+        hvac_action: "{{ 'heating' if is_state('input_boolean.sim_heat2', 'on') else 'idle' }}"
+        set_temperature:
+          - service: input_number.set_value
+            data:
+              entity_id: input_number.sim_target2
+              value: "{{ temperature }}"
+        set_hvac_mode:
+          - service: input_boolean.turn_{{ 'on' if hvac_mode in ['heat', 'auto'] else 'off' }}
+            data:
+              entity_id: input_boolean.sim_heat2

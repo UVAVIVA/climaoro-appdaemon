@@ -1,0 +1,28 @@
+type: vertical-stack
+cards:
+  - type: entities
+    title: Zona 1 (A)
+    entities:
+      - entity: climate.termostato_autonomo_1_climatizzazione
+      - entity: number.termostato_autonomo_1_temperatura_salvata
+      - entity: input_boolean.inclusione_a_1
+      - entity: input_number.peso_a_1
+      - entity: input_number.delta_squadra_giorno_a_1
+      - entity: input_number.delta_squadra_notte_a_1
+      - entity: input_number.delta_spegnimento_giorno_a_1
+      - entity: input_number.delta_spegnimento_notte_a_1
+      - entity: switch.termostato_autonomo_1_modalita_centralizzata
+      - entity: button.termostato_autonomo_1_rinnova_modalita_centralizzata
+  - type: entities
+    title: Zona 2 (A)
+    entities:
+      - entity: climate.termostato_autonomo_2_climatizzazione
+      - entity: number.termostato_autonomo_2_temperatura_salvata
+      - entity: input_boolean.inclusione_a_2
+      - entity: input_number.peso_a_2
+      - entity: input_number.delta_squadra_giorno_a_2
+      - entity: input_number.delta_squadra_notte_a_2
+      - entity: input_number.delta_spegnimento_giorno_a_2
+      - entity: input_number.delta_spegnimento_notte_a_2
+      - entity: switch.termostato_autonomo_2_modalita_centralizzata
+      - entity: button.termostato_autonomo_2_rinnova_modalita_centralizzata
