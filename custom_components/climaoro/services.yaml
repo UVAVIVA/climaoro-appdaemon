@@ -1,0 +1,55 @@
+set_calendario:
+  name: Imposta calendario
+  description: >-
+    Imposta una cella del calendario 7x24 di un gruppo
+    (eco / comfort / autonomo).
+  fields:
+    gruppo:
+      name: Gruppo
+      description: Gruppo del calendario.
+      required: true
+      example: giorno
+      selector:
+        select:
+          options:
+            - label: GIORNO
+              value: giorno
+            - label: NOTTE
+              value: notte
+            - label: SERVIZI
+              value: servizi
+    giorno:
+      name: Giorno
+      description: Giorno della settimana.
+      required: true
+      example: lun
+      selector:
+        select:
+          options:
+            - lun
+            - mar
+            - mer
+            - gio
+            - ven
+            - sab
+            - dom
+    ora:
+      name: Ora
+      description: Ora (0-23).
+      required: true
+      example: 14
+      selector:
+        number:
+          min: 0
+          max: 23
+          mode: box
+    valore:
+      name: Valore
+      description: Modalita' da impostare nella cella.
+      required: true
+      selector:
+        select:
+          options:
+            - eco
+            - comfort
+            - autonomo

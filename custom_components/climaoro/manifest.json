@@ -1,0 +1,10 @@
+{
+  "domain": "climaoro",
+  "name": "Climaoro",
+  "codeowners": ["@climaoro"],
+  "config_flow": true,
+  "documentation": "https://github.com/UVAVIVA/climaoro-appdaemon",
+  "iot_class": "local_polling",
+  "requirements": [],
+  "version": "0.1.0"
+}

@@ -1,0 +1,75 @@
+number:
+  - name: Termostato Autonomo 1 Temperatura Salvata
+    unique_id: sim_temp_salvata_1
+    state: '{{ states("input_number.sim_termostato_1_temperatura_salvata") }}'
+    min: 10
+    max: 30
+    step: 0.5
+    unit_of_measurement: "°C"
+    set_value:
+      service: input_number.set_value
+      target:
+        entity_id: input_number.sim_termostato_1_temperatura_salvata
+      data:
+        value: '{{ value }}'
+  - name: Termostato Autonomo 2 Temperatura Salvata
+    unique_id: sim_temp_salvata_2
+    state: '{{ states("input_number.sim_termostato_2_temperatura_salvata") }}'
+    min: 10
+    max: 30
+    step: 0.5
+    unit_of_measurement: "°C"
+    set_value:
+      service: input_number.set_value
+      target:
+        entity_id: input_number.sim_termostato_2_temperatura_salvata
+      data:
+        value: '{{ value }}'
+
+sensor:
+  - name: Termostato Autonomo 1 Temperatura Attuale
+    unique_id: sim_temp_attuale_1
+    state: '{{ states("input_number.sim_termostato_1_temperatura_attuale") }}'
+    unit_of_measurement: "°C"
+  - name: Termostato Autonomo 2 Temperatura Attuale
+    unique_id: sim_temp_attuale_2
+    state: '{{ states("input_number.sim_termostato_2_temperatura_attuale") }}'
+    unit_of_measurement: "°C"
+
+switch:
+  - name: Termostato Autonomo 1 Modalita Centralizzata
+    unique_id: sim_modalita_1
+    state: '{{ states("input_boolean.sim_termostato_1_modalita_centralizzata") }}'
+    turn_on:
+      service: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.sim_termostato_1_modalita_centralizzata
+    turn_off:
+      service: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.sim_termostato_1_modalita_centralizzata
+  - name: Termostato Autonomo 2 Modalita Centralizzata
+    unique_id: sim_modalita_2
+    state: '{{ states("input_boolean.sim_termostato_2_modalita_centralizzata") }}'
+    turn_on:
+      service: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.sim_termostato_2_modalita_centralizzata
+    turn_off:
+      service: input_boolean.turn_off
+      target:
+        entity_id: input_boolean.sim_termostato_2_modalita_centralizzata
+
+button:
+  - name: Termostato Autonomo 1 Rinnova Modalita Centralizzata
+    unique_id: sim_rinnovo_1
+    press:
+      service: input_button.press
+      target:
+        entity_id: input_button.sim_termostato_1_rinnova
+  - name: Termostato Autonomo 2 Rinnova Modalita Centralizzata
+    unique_id: sim_rinnovo_2
+    press:
+      service: input_button.press
+      target:
+        entity_id: input_button.sim_termostato_2_rinnova

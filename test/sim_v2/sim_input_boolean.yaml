@@ -1,0 +1,8 @@
+sim_termostato_1_modalita_centralizzata:
+  name: Sim Modalita Centralizzata 1
+sim_termostato_1_riscaldamento:
+  name: Sim Riscaldamento 1
+sim_termostato_2_modalita_centralizzata:
+  name: Sim Modalita Centralizzata 2
+sim_termostato_2_riscaldamento:
+  name: Sim Riscaldamento 2

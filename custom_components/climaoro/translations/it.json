@@ -1,0 +1,133 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Gruppi",
+        "description": "Scegli quali gruppi usare. Le stanze verranno inserite in un gruppo.",
+        "data": {
+          "gruppo_giorno": "GIORNO",
+          "gruppo_notte": "NOTTE",
+          "gruppo_servizi": "SERVIZI"
+        }
+      },
+      "rooms": {
+        "title": "Stanze",
+        "description": "Stanze configurate finora:\n\n{riepilogo}",
+        "data": {
+          "scelta": "Azione"
+        }
+      },
+      "add_room": {
+        "title": "Aggiungi stanza",
+        "description": "Inserisci le entita' della stanza (come nelle automazioni).\n\n{riepilogo}",
+        "data": {
+          "nome": "Nome stanza",
+          "gruppo": "Gruppo",
+          "clima": "Termostato (climatizzazione)",
+          "temp_salvata": "Temperatura salvata",
+          "modalita": "Modalita' centralizzata",
+          "rinnovo": "Rinnovo modalita'",
+          "peso": "Peso",
+          "inclusione": "Inclusa"
+        }
+      },
+      "manage_room": {
+        "title": "Scegli stanza",
+        "description": "Quale stanza vuoi modificare?",
+        "data": {
+          "room_id": "Stanza"
+        }
+      },
+      "edit_room": {
+        "title": "Modifica {nome}",
+        "description": "Sposta la stanza in un altro gruppo o cambia peso e inclusione.",
+        "data": {
+          "gruppo": "Gruppo",
+          "peso": "Peso",
+          "inclusione": "Inclusa"
+        }
+      },
+      "global": {
+        "title": "Parametri globali",
+        "description": "Master e soglia pesi.",
+        "data": {
+          "attivo": "Attivo",
+          "soglia_pesi": "Soglia pesi"
+        }
+      }
+    },
+    "error": {
+      "nessun_gruppo": "Seleziona almeno un gruppo.",
+      "nome_obbligatorio": "Il nome della stanza e' obbligatorio.",
+      "nome_duplicato": "Esiste gia' una stanza con questo nome.",
+      "nessuna_stanza": "Aggiungi almeno una stanza prima di continuare."
+    },
+    "abort": {
+      "nessuna_stanza": "Nessuna stanza configurata."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Climaoro - Opzioni",
+        "data": {
+          "scelta": "Cosa vuoi fare?"
+        }
+      },
+      "rooms": {
+        "title": "Stanze",
+        "data": {
+          "scelta": "Azione"
+        }
+      },
+      "select_group": {
+        "title": "Scegli gruppo",
+        "data": {
+          "gruppo": "Gruppo"
+        }
+      },
+      "edit_group": {
+        "title": "Delta del gruppo {gruppo}",
+        "data": {
+          "delta_comfort": "Delta comfort",
+          "delta_eco": "Delta eco"
+        }
+      }
+    },
+    "abort": {
+      "nessun_gruppo": "Nessun gruppo configurato."
+    }
+  },
+  "services": {
+    "set_calendario": {
+      "name": "Imposta calendario",
+      "description": "Imposta una cella del calendario 7x24 di un gruppo."
+    }
+  },
+  "entities": {
+    "number": {
+      "soglia_pesi": {
+        "name": "Soglia pesi"
+      },
+      "delta_gruppo": {
+        "name": "Delta {tipo} {gruppo}"
+      },
+      "peso_stanza": {
+        "name": "Peso {nome}"
+      }
+    },
+    "switch": {
+      "attivo": {
+        "name": "Attivo"
+      },
+      "inclusione_stanza": {
+        "name": "Inclusione {nome}"
+      }
+    },
+    "sensor": {
+      "calendario": {
+        "name": "Calendario {gruppo}"
+      }
+    }
+  }
+}

@@ -1,0 +1,197 @@
+=======================================================================
+CLIMAORO - PERCORSO PROGETTO (sintesi aggiornata)
+Questo file va LETTO all'inizio di ogni sessione e AGGIORNATO con i
+progressi. Contiene: obiettivo, architettura, decisioni, punti aperti,
+stato attuale, prossimi passi.
+=======================================================================
+
+-----------------------------------------------------------------------
+1. OBIETTIVO
+-----------------------------------------------------------------------
+Un'integrazione per Home Assistant ("Climaoro") che gestisce in modo
+centralizzato i termostati autonomi (Climaoro): l'utente la installa,
+inserisce le entità corrette (con i selettori, come nelle automazioni),
+e a quel punto l'integrazione crea TUTTO in automatico: entità di
+contorno, config AppDaemon, pannello di controllo.
+
+Il motore logico resta AppDaemon (disabilita la funzione autonoma dei
+termostati e li pilota collettivamente: gruppi, 2 fasce eco/comfort,
+delta per gruppo, calendario 7x24 per gruppo, soglia pesi, priorità,
+emergenza individuale).
+
+-----------------------------------------------------------------------
+2. ARCHITETTURA ATTUALE (funzionante e testata end-to-end)
+-----------------------------------------------------------------------
+- Custom component in /config/custom_components/climaoro/ con Config
+  Flow (wizard con selettori entity). NIENTE entity_id hardcoded.
+- L'integrazione crea in HA le entità di contorno:
+  * switch.climaoro_attivo (master)
+  * number.climaoro_soglia_pesi
+  * number.climaoro_<gruppo>_delta_comfort / _delta_eco (per gruppo)
+  * number.climaoro_<stanza>_peso
+  * switch.climaoro_<stanza>_inclusione
+  * sensor.climaoro_<gruppo>_calendario
+  Tutte scrivono le modifiche nelle OPTIONS della config entry
+  (verificato: change del number delta -> propagata a /api/climaoro/config).
+- L'integrazione espone la CONFIG RUNTIME GENERICA:
+  * REST  /api/climaoro/config
+  * WS    climaoro/config
+  Struttura: { global, gruppi[], entities{} } con gli ENTITY_ID CORRENTI
+  risolti dal registry HA (unique_id -> entity_id). Se l'utente rinomina
+  un'entità, app e pannello continuano a funzionare (rename-proof).
+  Per le 4 entità chiave della stanza (clima, temp_salvata, modalita,
+  rinnovo) il wizard salva ANCHE l'unique_id -> risoluzione rename-proof.
+- App AppDaemon GENERICA (appdaemon/climaoro.py): unica classe, args
+  ha_url + ha_token (+ refresh_sec/cycle_sec/rinnovo_sec). Non conosce
+  alcuna entità: legge /api/climaoro/config a ogni refresh e usa gli
+  entity_id risolti. Logica: fascia oraria -> delta gruppo; zone in
+  riscaldamento = priorità; altrimenti soglia pesi (accensione
+  collettiva); altrimenti emergenza individuale (temp <= guardia - 0.4).
+  Sicurezza: prima di un comando a un climate accende automaticamente
+  lo switch modalita_centralizzata se spento.
+- Pannello frontend: dashboard LOVELACE storage "Climaoro"
+  (url_path climaoro-panel) creata via websocket dal file locale
+  .storage/lovelace.climaoro_panel, costruita dagli entity_id risolti
+  (non hardcoded). Card: globale + per gruppo (delta, calendario) +
+  per stanza (climate, temp_salvata, peso, inclusione, modalita, rinnovo).
+- Simulazione senza dispositivi reali: entità finte in configuration.yaml
+  (sim_input_number.yaml, sim_input_boolean.yaml, sim_input_button.yaml,
+  sim_template.yaml, sim_climate.yaml - vedi sotto).
+
+-----------------------------------------------------------------------
+3. DECISIONI CONFERMATE (cronologia)
+-----------------------------------------------------------------------
+[09/08] Custom component + pannello frontend dedicato (scelta utente).
+[09/08] Se AppDaemon manca -> l'integrazione guida all'installazione e
+        poi riprende da sola.
+[09/08] Le entità di contorno vivono in HA come entità.
+[09/08] Setup: l'utente inserisce le entità corrette (selettori) +
+        pulsante "le altre seguono la stessa logica" -> tutto generato
+        in automatico.
+[09/08] MODELLO v2:
+        - STANZE: 2-8 TOTALI, ognuna con un NOME, appartiene a 1 gruppo,
+          ha peso + inclusione + le 4 entità chiave (climate, temp_salvata,
+          switch modalita, button rinnovo).
+        - GRUPPI: 3 FISSI con nomi preimpostati GIORNO / NOTTE / SERVIZI
+          (ciascuno opzionale). Ognuno ha 2 DELTA (comfort, eco) e il
+          PROPRIO calendario 7x24 (eco/comfort/autonomo). I delta valgono
+          SOLO a livello gruppo.
+        - GLOBALE: attivo (master) + soglia_pesi.
+        - Un'unica app AppDaemon coordina tutto.
+[09/08] Le azioni sono a livello GRUPPO; le stanze si possono SPOSTARE
+        tra gruppi (options flow) senza rifare il setup.
+[09/08] Le UNICHE cose individuali per stanza: PESO e INCLUSIONE.
+        L'INCLUSIONE vale per modalita centralizzata e pulsante rinnovo.
+[09/08] eco/comfort senza orari fissi: le fasce si impostano nel
+        calendario 7x24 a piacimento (tendina eco/comfort/autonomo).
+[09/08] GENERICITA': app AppDaemon E pannello NON usano entity_id
+        hardcoded; risolvono dal registry HA via l'endpoint
+        /api/climaoro/config (REST) e websocket "climaoro/config".
+[10/08] FIX: hass.helpers.entity_registry non esiste su HA 2026.8.1 ->
+        from homeassistant.helpers import entity_registry as er,
+        reg = er.async_get(hass).
+[10/08] SIMULAZIONE CLIMATE su HA 2026.8: il template climate NON esiste
+        più (rimosso in 2026.6, "'climate' is an invalid option for
+        'template'"). Soluzione: piattaforma standard "climate" con
+        generic_thermostat (heater = input_boolean simulato, target_sensor
+        = sensor template che replica input_number temp attuale) ->
+        climate.termostato_autonomo_1_climatizzazione con current_temperature,
+        temperature (setpoint), hvac_action. VERIFICATO.
+[10/08] Pannello frontend = dashboard Lovelace STORAGE creata via
+        websocket ("lovelace/dashboards/create" richiede url_path CON
+        trattino: climaoro-panel), config salvata con
+        "lovelace/config/save". Accessibile a /climaoro-panel.
+
+-----------------------------------------------------------------------
+4. PUNTI APERTI / DA DEFINIRE
+-----------------------------------------------------------------------
+- AppDaemon: gestire il refresh della config quando l'utente modifica
+  le options da UI (ora l'app rilegge ogni refresh_sec=600s; valutare
+  notifica via evento/websocket per refresh immediato).
+- Auto-reload di AppDaemon dopo la scrittura dei file da parte
+  dell'integrazione (attualmente il deploy dei file è manuale/scp).
+- Distribuzione: installazione manuale (copia cartella) per ora; HACS
+  come evoluzione.
+- La dashboard Lovelace non è "fissa": è editabile dall'utente. Se si
+  vuole un pannello davvero fisso servirebbe un frontend custom (ha
+  il costo di un repository separato per il JS) - NON necessario ora.
+- test/simulazione.yaml (vecchio esempio) e appdaemon/riscaldamento.py
+  + generatore.py sono LEGACY (architettura v1): conservati come
+  riferimento, non più usati.
+- L'addon AppDaemon non ha il plugin V3 con supporto completo alle
+  entity: l'app usa get_state/call_service via namespace HASS, ok.
+
+-----------------------------------------------------------------------
+5. STATO ATTUALE (10/08 - VERIFICATO END-TO-END)
+-----------------------------------------------------------------------
+- Repo: D:\MIO_UTENTE\Desktop\APPDAEMON\climaoro-appdaemon
+- HA virtuale (VirtualBox "Home Assistant", HAOS 2026.8.1):
+  * NIC1 bridged, MAC 080027A47CFD -> IP STATICO 192.168.1.132/24
+    (gw/DNS 192.168.1.1).
+  * NIC2 NAT 10.0.3.15 + port-forward: 127.0.0.1:8080 -> 80 (HA) e
+    127.0.0.1:2222 -> 22 (SSH).
+  * SSH: root@127.0.0.1:2222, chiave id_climaoro.
+  * Utente HA: climaoro / climaoro. Token: ha_token.txt (rinnovare con
+    ha_relogin.py dopo ogni "ha core restart").
+- Custom component SU VM in /homeassistant/custom_components/climaoro/
+  (abilitato, entry "climaoro" LOADED, 12 entità attive).
+- ENDPOINT: /api/climaoro/config -> 200, struttura generica completa
+  (global + 2 gruppi + entities risolte). Websocket climaoro/config ok.
+- AppDaemon: addon a0d7b954 installato/started; app climaoro in
+  esecuzione in /addon_configs/a0d7b954_appdaemon/apps/ (climaoro.py +
+  apps.yaml con ha_url http://192.168.1.132:80 + token long-lived).
+  Config runtime caricata (2 gruppi, 12 entità). CICLI ogni 60s.
+- TEST END-TO-END (sim con climate generic_thermostat) - TUTTI VERIFICATI
+  nei log addon:
+  * RAMO PRIORITA': stanza con hvac_action=heating -> "sta scaldando -
+    priorita'." (cicli 19:28/19:29/19:31/19:34).
+  * RAMO SOGLIA PESI: peso 5.0 >= soglia 5.0 -> "Soglia pesi raggiunta
+    -> accensioni collettive" + setpoint portato a lavoro 20.5 (19:33).
+  * RAMO EMERGENZA: temp 18.0 <= guardia-0.4 (19.1) -> "Emergenza
+    stanza Cucina" + setpoint a lavoro (19:32).
+  * SICUREZZA MODALITA': "modalita' centralizzata spenta, tentativo di
+    accensione" + switch acceso prima del comando climate (19:32).
+  * RINNOVO: "Rinnovo modalita' stanza 'Cucina' (button...)" (19:31).
+  * WIRING ENTITY->OPTIONS: number.climaoro_giorno_delta_eco=2.0 ->
+    /api/climaoro/config mostra delta_eco 2.0 (poi ripristinato 1.0).
+  * BUG TROVATO E FIXATO: in HA 2026.8 config_entries.async_update_entry
+    restituisce BOOL (non la ConfigEntry). _update_entry() in number.py e
+    switch.py assegnava il return a self._entry -> dopo la 1a modifica
+    self._entry diventava bool e le chiamate successive fallivano con
+    "AttributeError: 'bool' object has no attribute 'options'" (visto in
+    log core: i reset di delta_eco e peso NON erano andati a buon fine).
+    FIX: non assegnare il return; rileggere self._entry da
+    config_entries.async_entries(DOMAIN)[0]. VERIFICATO con 2 chiamate
+    consecutive riuscite (delta_eco 0.8->1.0, peso 2.0->1.5).
+- PANNELLO: dashboard Lovelace "Climaoro" (climaoro-panel) creata e
+  salvata; 20 entità risolte; HTTP 200 su http://127.0.0.1:8080/climaoro-panel.
+- ENTITÀ SIM SU VM (per test):
+  * input_number sim_termostato_1_temperatura_salvata (20) / _attuale (18)
+  * input_boolean sim_termostato_1_modalita_centralizzata /
+    _riscaldamento (heater)
+  * input_button sim_termostato_1_rinnovo
+  * template: number.termostato_autonomo_1_temperatura_salvata,
+    sensor.termostato_autonomo_1_temperatura_attuale,
+    switch.termostato_autonomo_1_modalita_centralizzata,
+    button.termostato_autonomo_1_rinnovo_modalita_centralizzata
+  * climate.termostato_autonomo_1_climatizzazione (generic_thermostat)
+  * configuration.yaml: input_number/input_boolean/input_button/template
+    + climate: !include sim_climate.yaml
+
+-----------------------------------------------------------------------
+6. PROSSIMI PASSI
+-----------------------------------------------------------------------
+1. (FATTO) Climate simulato su HA 2026.8 risolto con generic_thermostat.
+2. (FATTO) Pannello Lovelace Climaoro creato e raggiungibile.
+3. Aggiornare README.md (architettura v2, installazione, test).
+4. Portare la logica di derivazione dal generatore.py dentro
+   l'integrazione (creazione helper automatica dal wizard).
+5. Wizard completo: inserimento entità chiave + pulsante conferma logica
+   + creazione automatica entità di contorno (oggi avviene al submit).
+6. Installer AppDaemon dall'integrazione (write apps.yaml + app, reload).
+7. Verificare il comportamento dell'app su periodo eco/autonomo
+   (calendario) e il refresh immediato della config.
+8. Modalità simulazione guidata dall'integrazione (oggi via YAML manuale).
+9. Push su GitHub quando l'utente conferma.
+
+=======================================================================

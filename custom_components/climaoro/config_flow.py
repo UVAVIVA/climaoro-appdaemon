@@ -1,0 +1,521 @@
+"""Config flow e options flow per Climaoro."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from homeassistant import config_entries
+from homeassistant.const import CONF_NAME
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import selector
+import homeassistant.helpers.config_validation as cv
+import voluptuous as vol
+
+from .const import (
+    CALENDAR_VALUES,
+    CONF_ATTIVO,
+    CONF_CLIMA,
+    CONF_CLIMA_UID,
+    CONF_DELTA_COMFORT,
+    CONF_DELTA_ECO,
+    CONF_GRUPPO,
+    CONF_INCLUSIONE,
+    CONF_MODALITA,
+    CONF_MODALITA_UID,
+    CONF_NOME,
+    CONF_PESO,
+    CONF_RINNOVO,
+    CONF_RINNOVO_UID,
+    CONF_ROOMS,
+    CONF_SOGLIA_PESI,
+    CONF_TEMP_SALVATA,
+    CONF_TEMP_SALVATA_UID,
+    DEFAULT_ATTIVO,
+    DEFAULT_DELTA_COMFORT,
+    DEFAULT_DELTA_ECO,
+    DEFAULT_INCLUSIONE,
+    DEFAULT_PESO,
+    DEFAULT_SOGLIA_PESI,
+    DELTA_MAX,
+    DELTA_MIN,
+    DELTA_STEP,
+    DOMAIN,
+    GROUP_LABELS,
+    GROUPS,
+    PESO_MAX,
+    PESO_MIN,
+    PESO_STEP,
+    SOGLIA_MAX,
+    SOGLIA_MIN,
+    SOGLIA_STEP,
+    default_groups,
+)
+
+GROUP_OPTIONS = [{"value": g, "label": GROUP_LABELS[g]} for g in GROUPS]
+
+
+def _slug(nome: str) -> str:
+    from homeassistant.util import slugify
+
+    return slugify(nome) or "stanza"
+
+
+def _entity_selector(domains: list[str]):
+    return selector.EntitySelector(
+        selector.EntitySelectorConfig(domain=domains, multiple=False)
+    )
+
+
+def _numero(minimum: float, maximum: float, step: float, mode: str = "slider"):
+    return selector.NumberSelector(
+        selector.NumberSelectorConfig(min=minimum, max=maximum, step=step, mode=mode)
+    )
+
+
+def _gruppo_selector():
+    return selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=GROUP_OPTIONS,
+            mode=selector.SelectSelectorMode.DROPDOWN,
+        )
+    )
+
+
+async def _resolve_entity_uids(
+    hass: HomeAssistant, selezioni: dict[str, str]
+) -> dict[str, str | None]:
+    """Unique_id corrente per ogni entity_id selezionato (None se assente)."""
+    er = hass.helpers.entity_registry.async_get(hass)
+    uids: dict[str, str | None] = {}
+    for chiave, entity_id in selezioni.items():
+        entry = er.async_get(entity_id)
+        uids[chiave] = entry.unique_id if entry else None
+    return uids
+
+
+class ClimaoroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Wizard di configurazione Climaoro."""
+
+    VERSION = 1
+
+    def __init__(self) -> None:
+        """Init."""
+        self._gruppi: list[str] = []
+        self._rooms: list[dict[str, Any]] = []
+        self._edit_room_id: str | None = None
+
+    async def async_step_user(self, user_input: dict[str, Any] | None = None):
+        """Step 1: scelta dei gruppi da usare."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            attivi = [g for g in GROUPS if user_input.get(f"gruppo_{g}")]
+            if not attivi:
+                errors["base"] = "nessun_gruppo"
+            else:
+                self._gruppi = attivi
+                return await self.async_step_rooms()
+
+        schema = {}
+        for g in GROUPS:
+            schema[vol.Optional(f"gruppo_{g}", default=True)] = bool
+        return self.async_show_form(
+            step_id="user",
+            data_schema=vol.Schema(schema),
+            errors=errors,
+        )
+
+    async def async_step_rooms(self, user_input: dict[str, Any] | None = None):
+        """Menu stanze: aggiungi o termina."""
+        if user_input is not None:
+            if user_input["scelta"] == "aggiungi":
+                return await self.async_step_add_room()
+            if user_input["scelta"] == "gestisci":
+                return await self.async_step_manage_room()
+            return await self.async_step_global()
+
+        desc = self._riepilogo_stanze()
+        schema = {
+            vol.Required("scelta"): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        {"value": "aggiungi", "label": "Aggiungi una stanza"},
+                        {"value": "gestisci", "label": "Modifica/sposta una stanza"},
+                        {"value": "fatto", "label": "Tutto a posto, continua"},
+                    ],
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            )
+        }
+        return self.async_show_form(
+            step_id="rooms",
+            data_schema=vol.Schema(schema),
+            description_placeholders={"riepilogo": desc},
+        )
+
+    def _riepilogo_stanze(self) -> str:
+        if not self._rooms:
+            return "Nessuna stanza aggiunta finora."
+        righe = [
+            f"- {r[CONF_NOME]} -> {GROUP_LABELS[r[CONF_GRUPPO]]} (peso {r.get(CONF_PESO, DEFAULT_PESO)}, "
+            f"inclusa: {'si' if r.get(CONF_INCLUSIONE, True) else 'no'})"
+            for r in self._rooms
+        ]
+        return "\n".join(righe)
+
+    async def async_step_manage_room(self, user_input: dict[str, Any] | None = None):
+        """Selezione stanza da modificare."""
+        if user_input is not None:
+            self._edit_room_id = user_input["room_id"]
+            return await self.async_step_edit_room()
+
+        schema = {
+            vol.Required("room_id"): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        {"value": r["id"], "label": f"{r[CONF_NOME]} ({GROUP_LABELS[r[CONF_GRUPPO]]})"}
+                        for r in self._rooms
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            )
+        }
+        return self.async_show_form(step_id="manage_room", data_schema=vol.Schema(schema))
+
+    async def async_step_edit_room(self, user_input: dict[str, Any] | None = None):
+        """Modifica gruppo/peso/inclusione di una stanza."""
+        room_id = self._edit_room_id
+        room = next((r for r in self._rooms if r["id"] == room_id), None)
+        if room is None:
+            return await self.async_step_rooms()
+
+        if user_input is not None:
+            room[CONF_GRUPPO] = user_input[CONF_GRUPPO]
+            room[CONF_PESO] = user_input[CONF_PESO]
+            room[CONF_INCLUSIONE] = user_input[CONF_INCLUSIONE]
+            self._edit_room_id = None
+            return await self.async_step_rooms()
+
+        schema = {
+            vol.Required(CONF_GRUPPO, default=room.get(CONF_GRUPPO)): _gruppo_selector(),
+            vol.Required(CONF_PESO, default=room.get(CONF_PESO, DEFAULT_PESO)): _numero(
+                PESO_MIN, PESO_MAX, PESO_STEP
+            ),
+            vol.Required(
+                CONF_INCLUSIONE, default=room.get(CONF_INCLUSIONE, DEFAULT_INCLUSIONE)
+            ): selector.BooleanSelector(),
+        }
+        return self.async_show_form(
+            step_id="edit_room",
+            data_schema=vol.Schema(schema),
+            description_placeholders={"nome": room[CONF_NOME]},
+        )
+
+    async def async_step_add_room(self, user_input: dict[str, Any] | None = None):
+        """Aggiunta di una stanza con selettori entity."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            nome = user_input[CONF_NOME].strip()
+            if not nome:
+                errors[CONF_NOME] = "nome_obbligatorio"
+            elif any(r[CONF_NOME].lower() == nome.lower() for r in self._rooms):
+                errors[CONF_NOME] = "nome_duplicato"
+            else:
+                uids = await _resolve_entity_uids(
+                    self.hass,
+                    {
+                        CONF_CLIMA: user_input[CONF_CLIMA],
+                        CONF_TEMP_SALVATA: user_input[CONF_TEMP_SALVATA],
+                        CONF_MODALITA: user_input[CONF_MODALITA],
+                        CONF_RINNOVO: user_input[CONF_RINNOVO],
+                    },
+                )
+                self._rooms.append(
+                    {
+                        "id": _slug(nome),
+                        CONF_NOME: nome,
+                        CONF_GRUPPO: user_input[CONF_GRUPPO],
+                        CONF_CLIMA: user_input[CONF_CLIMA],
+                        CONF_TEMP_SALVATA: user_input[CONF_TEMP_SALVATA],
+                        CONF_MODALITA: user_input[CONF_MODALITA],
+                        CONF_RINNOVO: user_input[CONF_RINNOVO],
+                        CONF_CLIMA_UID: uids.get(CONF_CLIMA),
+                        CONF_TEMP_SALVATA_UID: uids.get(CONF_TEMP_SALVATA),
+                        CONF_MODALITA_UID: uids.get(CONF_MODALITA),
+                        CONF_RINNOVO_UID: uids.get(CONF_RINNOVO),
+                        CONF_PESO: user_input.get(CONF_PESO, DEFAULT_PESO),
+                        CONF_INCLUSIONE: user_input.get(CONF_INCLUSIONE, DEFAULT_INCLUSIONE),
+                    }
+                )
+                return await self.async_step_rooms()
+
+        schema = {
+            vol.Required(CONF_NOME): str,
+            vol.Required(CONF_GRUPPO): _gruppo_selector(),
+            vol.Required(CONF_CLIMA): _entity_selector(["climate"]),
+            vol.Required(CONF_TEMP_SALVATA): _entity_selector(["number"]),
+            vol.Required(CONF_MODALITA): _entity_selector(["switch"]),
+            vol.Required(CONF_RINNOVO): _entity_selector(["button"]),
+            vol.Required(CONF_PESO, default=DEFAULT_PESO): _numero(PESO_MIN, PESO_MAX, PESO_STEP),
+            vol.Required(CONF_INCLUSIONE, default=DEFAULT_INCLUSIONE): selector.BooleanSelector(),
+        }
+        return self.async_show_form(
+            step_id="add_room",
+            data_schema=vol.Schema(schema),
+            errors=errors,
+            description_placeholders={"riepilogo": self._riepilogo_stanze()},
+        )
+
+    async def async_step_global(self, user_input: dict[str, Any] | None = None):
+        """Parametri globali (attivo + soglia pesi)."""
+        if user_input is not None:
+            if not self._rooms:
+                return self.async_abort(reason="nessuna_stanza")
+            data = {
+                "data": {
+                    CONF_ATTIVO: user_input.get(CONF_ATTIVO, DEFAULT_ATTIVO),
+                    CONF_SOGLIA_PESI: user_input.get(CONF_SOGLIA_PESI, DEFAULT_SOGLIA_PESI),
+                    "groups": default_groups(self._gruppi),
+                    CONF_ROOMS: self._rooms,
+                }
+            }
+            return self.async_create_entry(title="Climaoro", data=data)
+
+        schema = {
+            vol.Required(CONF_ATTIVO, default=DEFAULT_ATTIVO): selector.BooleanSelector(),
+            vol.Required(CONF_SOGLIA_PESI, default=DEFAULT_SOGLIA_PESI): _numero(
+                SOGLIA_MIN, SOGLIA_MAX, SOGLIA_STEP
+            ),
+        }
+        return self.async_show_form(step_id="global", data_schema=vol.Schema(schema))
+
+
+class ClimaoroOptionsFlow(config_entries.OptionsFlow):
+    """Opzioni: spostare stanze, modificare delta e parametri globali."""
+
+    VERSION = 1
+
+    def __init__(self, entry: config_entries.ConfigEntry) -> None:
+        """Init."""
+        self._entry = entry
+        self._data = dict(entry.options)
+        self._edit_room_id: str | None = None
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None):
+        """Menu principale opzioni."""
+        if user_input is not None:
+            scelta = user_input["scelta"]
+            if scelta == "stanze":
+                return await self.async_step_rooms()
+            if scelta == "gruppi":
+                return await self.async_step_select_group()
+            if scelta == "globale":
+                return await self.async_step_global()
+            return self.async_create_entry(title="", data=self._data)
+
+        schema = {
+            vol.Required("scelta"): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        {"value": "stanze", "label": "Gestisci le stanze (aggiungi, sposta, peso, inclusione)"},
+                        {"value": "gruppi", "label": "Delta dei gruppi (comfort / eco)"},
+                        {"value": "globale", "label": "Parametri globali (attivo, soglia pesi)"},
+                        {"value": "fine", "label": "Salva e chiudi"},
+                    ],
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            )
+        }
+        return self.async_show_form(step_id="init", data_schema=vol.Schema(schema))
+
+    async def async_step_rooms(self, user_input: dict[str, Any] | None = None):
+        """Menu stanze nelle opzioni."""
+        if user_input is not None:
+            if user_input["scelta"] == "aggiungi":
+                return await self.async_step_add_room()
+            if user_input["scelta"] == "gestisci":
+                return await self.async_step_manage_room()
+            return await self.async_step_init()
+
+        schema = {
+            vol.Required("scelta"): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        {"value": "aggiungi", "label": "Aggiungi una stanza"},
+                        {"value": "gestisci", "label": "Sposta/modifica una stanza"},
+                        {"value": "indietro", "label": "Indietro"},
+                    ],
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            )
+        }
+        return self.async_show_form(step_id="rooms", data_schema=vol.Schema(schema))
+
+    async def async_step_add_room(self, user_input: dict[str, Any] | None = None):
+        """Aggiunta stanza (stesso form del wizard)."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            nome = user_input[CONF_NOME].strip()
+            rooms = self._data.get(CONF_ROOMS, [])
+            if not nome:
+                errors[CONF_NOME] = "nome_obbligatorio"
+            elif any(r[CONF_NOME].lower() == nome.lower() for r in rooms):
+                errors[CONF_NOME] = "nome_duplicato"
+            else:
+                uids = await _resolve_entity_uids(
+                    self.hass,
+                    {
+                        CONF_CLIMA: user_input[CONF_CLIMA],
+                        CONF_TEMP_SALVATA: user_input[CONF_TEMP_SALVATA],
+                        CONF_MODALITA: user_input[CONF_MODALITA],
+                        CONF_RINNOVO: user_input[CONF_RINNOVO],
+                    },
+                )
+                rooms = list(rooms) + [
+                    {
+                        "id": _slug(nome),
+                        CONF_NOME: nome,
+                        CONF_GRUPPO: user_input[CONF_GRUPPO],
+                        CONF_CLIMA: user_input[CONF_CLIMA],
+                        CONF_TEMP_SALVATA: user_input[CONF_TEMP_SALVATA],
+                        CONF_MODALITA: user_input[CONF_MODALITA],
+                        CONF_RINNOVO: user_input[CONF_RINNOVO],
+                        CONF_CLIMA_UID: uids.get(CONF_CLIMA),
+                        CONF_TEMP_SALVATA_UID: uids.get(CONF_TEMP_SALVATA),
+                        CONF_MODALITA_UID: uids.get(CONF_MODALITA),
+                        CONF_RINNOVO_UID: uids.get(CONF_RINNOVO),
+                        CONF_PESO: user_input.get(CONF_PESO, DEFAULT_PESO),
+                        CONF_INCLUSIONE: user_input.get(CONF_INCLUSIONE, DEFAULT_INCLUSIONE),
+                    }
+                ]
+                self._data[CONF_ROOMS] = rooms
+                return await self.async_step_rooms()
+
+        schema = {
+            vol.Required(CONF_NOME): str,
+            vol.Required(CONF_GRUPPO): _gruppo_selector(),
+            vol.Required(CONF_CLIMA): _entity_selector(["climate"]),
+            vol.Required(CONF_TEMP_SALVATA): _entity_selector(["number"]),
+            vol.Required(CONF_MODALITA): _entity_selector(["switch"]),
+            vol.Required(CONF_RINNOVO): _entity_selector(["button"]),
+            vol.Required(CONF_PESO, default=DEFAULT_PESO): _numero(PESO_MIN, PESO_MAX, PESO_STEP),
+            vol.Required(CONF_INCLUSIONE, default=DEFAULT_INCLUSIONE): selector.BooleanSelector(),
+        }
+        return self.async_show_form(step_id="add_room", data_schema=vol.Schema(schema), errors=errors)
+
+    async def async_step_manage_room(self, user_input: dict[str, Any] | None = None):
+        """Selezione stanza da modificare/spostare."""
+        rooms = self._data.get(CONF_ROOMS, [])
+        if user_input is not None:
+            self._edit_room_id = user_input["room_id"]
+            return await self.async_step_edit_room()
+
+        schema = {
+            vol.Required("room_id"): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        {"value": r["id"], "label": f"{r[CONF_NOME]} ({GROUP_LABELS[r[CONF_GRUPPO]]})"}
+                        for r in rooms
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            )
+        }
+        return self.async_show_form(step_id="manage_room", data_schema=vol.Schema(schema))
+
+    async def async_step_edit_room(self, user_input: dict[str, Any] | None = None):
+        """Sposta stanza / modifica peso e inclusione."""
+        rooms = self._data.get(CONF_ROOMS, [])
+        room = next((r for r in rooms if r["id"] == self._edit_room_id), None)
+        if room is None:
+            return await self.async_step_rooms()
+
+        if user_input is not None:
+            room[CONF_GRUPPO] = user_input[CONF_GRUPPO]
+            room[CONF_PESO] = user_input[CONF_PESO]
+            room[CONF_INCLUSIONE] = user_input[CONF_INCLUSIONE]
+            self._data[CONF_ROOMS] = rooms
+            self._edit_room_id = None
+            return await self.async_step_rooms()
+
+        schema = {
+            vol.Required(CONF_GRUPPO, default=room.get(CONF_GRUPPO)): _gruppo_selector(),
+            vol.Required(CONF_PESO, default=room.get(CONF_PESO, DEFAULT_PESO)): _numero(
+                PESO_MIN, PESO_MAX, PESO_STEP
+            ),
+            vol.Required(CONF_INCLUSIONE, default=room.get(CONF_INCLUSIONE, DEFAULT_INCLUSIONE)): selector.BooleanSelector(),
+        }
+        return self.async_show_form(
+            step_id="edit_room",
+            data_schema=vol.Schema(schema),
+            description_placeholders={"nome": room[CONF_NOME]},
+        )
+
+    async def async_step_select_group(self, user_input: dict[str, Any] | None = None):
+        """Selezione gruppo da modificare."""
+        groups = self._data.get("groups", {})
+        if user_input is not None:
+            gruppo = user_input["gruppo"]
+            return await self.async_step_edit_group(gruppo=gruppo)
+
+        options = [
+            {"value": g, "label": GROUP_LABELS[g]}
+            for g in groups
+        ]
+        if not options:
+            return self.async_abort(reason="nessun_gruppo")
+        schema = {
+            vol.Required("gruppo"): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=options, mode=selector.SelectSelectorMode.DROPDOWN)
+            )
+        }
+        return self.async_show_form(step_id="select_group", data_schema=vol.Schema(schema))
+
+    async def async_step_edit_group(
+        self, user_input: dict[str, Any] | None = None, gruppo: str | None = None
+    ):
+        """Modifica delta di un gruppo."""
+        groups = self._data.get("groups", {})
+        if user_input is not None:
+            g = groups.get(user_input["_gruppo"], {})
+            g[CONF_DELTA_COMFORT] = user_input[CONF_DELTA_COMFORT]
+            g[CONF_DELTA_ECO] = user_input[CONF_DELTA_ECO]
+            groups[user_input["_gruppo"]] = g
+            self._data["groups"] = groups
+            return await self.async_step_init()
+
+        g = groups.get(gruppo, {})
+        schema = {
+            vol.Required("_gruppo", default=gruppo): str,
+            vol.Required(CONF_DELTA_COMFORT, default=g.get(CONF_DELTA_COMFORT, DEFAULT_DELTA_COMFORT)): _numero(
+                DELTA_MIN, DELTA_MAX, DELTA_STEP
+            ),
+            vol.Required(CONF_DELTA_ECO, default=g.get(CONF_DELTA_ECO, DEFAULT_DELTA_ECO)): _numero(
+                DELTA_MIN, DELTA_MAX, DELTA_STEP
+            ),
+        }
+        return self.async_show_form(
+            step_id="edit_group",
+            data_schema=vol.Schema(schema),
+            description_placeholders={"gruppo": GROUP_LABELS.get(gruppo, gruppo)},
+        )
+
+    async def async_step_global(self, user_input: dict[str, Any] | None = None):
+        """Modifica parametri globali."""
+        if user_input is not None:
+            self._data[CONF_ATTIVO] = user_input[CONF_ATTIVO]
+            self._data[CONF_SOGLIA_PESI] = user_input[CONF_SOGLIA_PESI]
+            return await self.async_step_init()
+
+        schema = {
+            vol.Required(CONF_ATTIVO, default=self._data.get(CONF_ATTIVO, DEFAULT_ATTIVO)): selector.BooleanSelector(),
+            vol.Required(CONF_SOGLIA_PESI, default=self._data.get(CONF_SOGLIA_PESI, DEFAULT_SOGLIA_PESI)): _numero(
+                SOGLIA_MIN, SOGLIA_MAX, SOGLIA_STEP
+            ),
+        }
+        return self.async_show_form(step_id="global", data_schema=vol.Schema(schema))
+
+
+@callback
+def async_get_options_flow(entry: config_entries.ConfigEntry):
+    """Options flow."""
+    return ClimaoroOptionsFlow(entry)

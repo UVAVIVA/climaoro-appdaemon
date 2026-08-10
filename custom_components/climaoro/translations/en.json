@@ -1,0 +1,133 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Groups",
+        "description": "Choose which groups to use. Rooms will be assigned to a group.",
+        "data": {
+          "gruppo_giorno": "DAY",
+          "gruppo_notte": "NIGHT",
+          "gruppo_servizi": "SERVICES"
+        }
+      },
+      "rooms": {
+        "title": "Rooms",
+        "description": "Rooms configured so far:\n\n{riepilogo}",
+        "data": {
+          "scelta": "Action"
+        }
+      },
+      "add_room": {
+        "title": "Add room",
+        "description": "Select the room entities (like in automations).\n\n{riepilogo}",
+        "data": {
+          "nome": "Room name",
+          "gruppo": "Group",
+          "clima": "Thermostat (climatizzazione)",
+          "temp_salvata": "Saved temperature",
+          "modalita": "Centralized mode",
+          "rinnovo": "Mode renewal",
+          "peso": "Weight",
+          "inclusione": "Included"
+        }
+      },
+      "manage_room": {
+        "title": "Choose room",
+        "description": "Which room do you want to modify?",
+        "data": {
+          "room_id": "Room"
+        }
+      },
+      "edit_room": {
+        "title": "Edit {nome}",
+        "description": "Move the room to another group or change weight and inclusion.",
+        "data": {
+          "gruppo": "Group",
+          "peso": "Weight",
+          "inclusione": "Included"
+        }
+      },
+      "global": {
+        "title": "Global settings",
+        "description": "Master switch and weight threshold.",
+        "data": {
+          "attivo": "Active",
+          "soglia_pesi": "Weight threshold"
+        }
+      }
+    },
+    "error": {
+      "nessun_gruppo": "Select at least one group.",
+      "nome_obbligatorio": "The room name is required.",
+      "nome_duplicato": "A room with this name already exists.",
+      "nessuna_stanza": "Add at least one room before continuing."
+    },
+    "abort": {
+      "nessuna_stanza": "No room configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Climaoro - Options",
+        "data": {
+          "scelta": "What do you want to do?"
+        }
+      },
+      "rooms": {
+        "title": "Rooms",
+        "data": {
+          "scelta": "Action"
+        }
+      },
+      "select_group": {
+        "title": "Choose group",
+        "data": {
+          "gruppo": "Group"
+        }
+      },
+      "edit_group": {
+        "title": "Group deltas {gruppo}",
+        "data": {
+          "delta_comfort": "Comfort delta",
+          "delta_eco": "Eco delta"
+        }
+      }
+    },
+    "abort": {
+      "nessun_gruppo": "No group configured."
+    }
+  },
+  "services": {
+    "set_calendario": {
+      "name": "Set calendar",
+      "description": "Set a cell of a group's 7x24 calendar."
+    }
+  },
+  "entities": {
+    "number": {
+      "soglia_pesi": {
+        "name": "Weight threshold"
+      },
+      "delta_gruppo": {
+        "name": "Delta {tipo} {gruppo}"
+      },
+      "peso_stanza": {
+        "name": "Weight {nome}"
+      }
+    },
+    "switch": {
+      "attivo": {
+        "name": "Active"
+      },
+      "inclusione_stanza": {
+        "name": "Inclusion {nome}"
+      }
+    },
+    "sensor": {
+      "calendario": {
+        "name": "Calendar {gruppo}"
+      }
+    }
+  }
+}

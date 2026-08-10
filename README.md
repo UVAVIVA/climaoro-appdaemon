@@ -1,67 +1,110 @@
-# CLIMAORO - Integrazione HA (AppDaemon)
+# CLIMAORO - Integrazione HA (custom component + AppDaemon)
 
 Gestione centralizzata del riscaldamento CLIMAORO per Home Assistant.
 
-La logica sta nei termostati (autonomia locale). Questa integrazione permette la
-**gestione centralizzata**: AppDaemon disabilita la funzione autonoma dei
-termostati e li pilota collettivamente (1 gruppo, 2 fasce, delta per-zona x fascia).
+I termostati hanno autonomia locale (firmware). Questa integrazione
+permette la **gestione centralizzata**: una singola app AppDaemon legge
+le impostazioni (gruppi, calendari 7x24, delta, pesi) e pilota tutti i
+termostati collettivamente, disattivando di fatto la loro funzione
+autonoma quando serve.
 
-## Struttura
+**Nessun entity_id hardcoded**: tutto (app e pannello) risolve le
+entità dal registry HA tramite l'endpoint `/api/climaoro/config` che
+restituisce la struttura completa con gli entity_id correnti. Se l'utente
+rinomina un'entità, basta rileggere la config e tutto continua a
+funzionare (rename-proof).
+
+## Architettura
 
 ```
+custom_components/climaoro/   Custom component HA
+  config_flow.py              Wizard con selettori entity
+  __init__.py                 Endpoint REST + websocket config runtime
+  number.py / switch.py / sensor.py   Entità di contorno
 appdaemon/
-  riscaldamento.py        App AppDaemon (logica centralizzata)
-  apps.yaml                Configurazione dell'app (da generare)
-generatore.py              Genera apps.yaml + configuration.yaml + lovelace
-                          da UN PAIO DI ENTITY DI ESEMPIO
-ha_config/                 Esempio generato (2 zone, tag "a")
-test/simulazione.yaml      Entita' finte per testare senza dispositivi reali
+  climaoro.py                 App AppDaemon generica (logica centralizzata)
+  apps.yaml                   Config app (solo ha_url + ha_token)
+ha_config/                    Esempi legacy (architettura v1)
+test/                         Esempi legacy di simulazione
+PERCORSO.txt                  Sintesi del progetto (leggere per primo)
 ```
 
-## Il generatore
+### Modello
 
-Da due entity di esempio ricostruisce tutto (tutte le zone, helper, template
-"Coerenza", dashboard), senza sapere niente di zone/fasce.
+- **Stanze** (2-8): nome, gruppo di appartenenza, **peso** e
+  **inclusione** (le uniche cose individuali) + le 4 entità chiave del
+  termostato:
+  - `climate.<dev>_climatizzazione`
+  - `number.<dev>_temperatura_salvata`
+  - `switch.<dev>_modalita_centralizzata`
+  - `button.<dev>_rinnovo_modalita_centralizzata`
+- **Gruppi** fissi GIORNO / NOTTE / SERVIZI (opzionali). Ognuno ha:
+  - 2 **delta** (comfort, eco)
+  - un **calendario 7x24** con tendina `eco` / `comfort` / `autonomo`
+    (autonomo = i termostati del gruppo tornano al firmware)
+  - `number.climaoro_<gruppo>_delta_comfort` / `_delta_eco`
+  - `sensor.climaoro_<gruppo>_calendario`
+- **Globale**: `switch.climaoro_attivo` (master) + `number.climaoro_soglia_pesi`.
 
-```
-python generatore.py \
-  --clima climate.termostato_autonomo_1_climatizzazione \
-  --temp  number.termostato_autonomo_1_temperatura_salvata \
-  --zone  2 \
-  --tag   a \
-  --feedback binary_sensor.collettore_6_zone_feedback_zona_1
-```
+### Logica di controllo (app AppDaemon)
 
-Output (in `--outdir`, default `OUT_GENERATORE`):
+Ogni ciclo (60s), per ogni gruppo in fascia non-autonoma:
 
-- `apps.yaml`        blocco istanza AppDaemon (da aggiungere ad apps.yaml)
-- `configuration.yaml` input helper + template "Coerenza zona" (da aggiungere a
-  configuration.yaml di HA)
-- `lovelace.yaml`    card per zona (da incollare in una dashboard)
+1. Calcola **guardia** = temp_salvata - delta e **lavoro** =
+   temp_salvata + delta dalla fascia corrente.
+2. Allinea il setpoint a guardia e raccoglie le stanze in richiesta
+   (temp reale <= temp_salvata - 0.5), sommandone i pesi.
+3. Se qualche stanza è già in **riscaldamento** (`hvac_action=heating`):
+   priorità a lei, si accendono le richiedenti.
+4. Altrimenti, se **totale pesi >= soglia**: accensione collettiva
+   (tutte le richiedenti a lavoro).
+5. Altrimenti **emergenza individuale**: stanza con temp <= guardia - 0.4
+   accesa a lavoro.
 
-Le entity dei termostati seguono il pattern del firmware:
-
-- `climate.<dev>_climatizzazione`
-- `number.<dev>_temperatura_salvata`
-- `switch.<dev>_modalita_centralizzata`
-- `button.<dev>_rinnova_modalita_centralizzata`
-- `sensor.<dev>_ultimo_messaggio_esp_now`
+Sicurezza: prima di un comando a un climate l'app accende
+automaticamente lo `switch.<dev>_modalita_centralizzata` se spento.
+Un timer periodico (default 240s) preme il pulsante "rinnovo" delle
+stanze incluse (non in fascia autonoma).
 
 ## Installazione
 
-1. Su HA installare l'addon **AppDaemon**.
-2. Copiare `appdaemon/riscaldamento.py` in `<appdaemon>/apps/`.
-3. Generare e incollare `apps.yaml` (in `<appdaemon>/apps/apps.yaml`) e il blocco
-   `configuration.yaml` (in `configuration.yaml` di HA).
-4. Riavviare AppDaemon.
+1. Copiare `custom_components/climaoro/` in `<config>/custom_components/`
+   e riavviare HA.
+2. **Aggiungi integrazione -> Climaoro**: il wizard guida nell'inserimento
+   delle entità chiave delle stanze; al termine crea le entità di contorno.
+3. Installare l'addon **AppDaemon**; copiare `appdaemon/climaoro.py` e
+   `appdaemon/apps.yaml` in `<addon_configs>/<id_appdaemon>/apps/`.
+4. In `apps.yaml` impostare:
+   ```yaml
+   climaoro:
+     module: climaoro
+     class: Climaoro
+     ha_url: http://<ip-ha>:80
+     ha_token: <token long-lived HA>
+   ```
+5. Riavviare AppDaemon. Il pannello "Climaoro" è disponibile a
+   `/climaoro-panel`.
 
 ## Test senza dispositivi reali (HA virtuale)
 
-1. Creare un'HA virtuale (vedi sotto).
-2. Incollare in `configuration.yaml`: blocco generato + `test/simulazione.yaml`.
-3. Far partire AppDaemon con `apps.yaml` generato.
-4. Manipolare `input_number.sim_temp1` / `sim_temp2` e verificare i log
-   dell'app.
+Il climate simulato su HA 2026.8 usa la piattaforma standard
+`generic_thermostat` (il template climate è stato rimosso da HA 2026.6):
 
-Nota: `riscaldamento.py` deve leggere `hvac_mode`/`current_temperature`/
-`temperature`/`hvac_action` dal climate e i parametri dagli helper `input_*`.
+- `input_number`/`input_boolean`/`input_button` per temp salvata/attuale,
+  modalità, heater, rinnovo.
+- Template `number`/`sensor`/`switch`/`button` che replicano i nomi reali
+  dei termostati.
+- `climate: !include sim_climate.yaml` con `generic_thermostat`
+  (heater = input_boolean, target_sensor = sensor template).
+
+Poi si manipolano i valori sim e si verificano i log dell'app (cicli,
+fascia, guardia/lavoro, priorità, soglia pesi, emergenza). Vedi
+`PERCORSO.txt` -> "STATO ATTUALE" per l'esito dei test end-to-end.
+
+## Repository
+
+- `PERCORSO.txt`: sintesi aggiornata del progetto (obiettivo,
+  architettura, decisioni, stato, prossimi passi) - LEGGERE PRIMA.
+- `appdaemon/riscaldamento.py` e `generatore.py`: legacy architettura v1
+  (conservati come riferimento, non usati).
+- `test/simulazione.yaml` e `ha_config/`: esempi legacy.

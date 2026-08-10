@@ -1,28 +1,15 @@
-type: vertical-stack
-cards:
-  - type: entities
-    title: Zona 1 (A)
-    entities:
-      - entity: climate.termostato_autonomo_1_climatizzazione
-      - entity: number.termostato_autonomo_1_temperatura_salvata
-      - entity: input_boolean.inclusione_a_1
-      - entity: input_number.peso_a_1
-      - entity: input_number.delta_squadra_giorno_a_1
-      - entity: input_number.delta_squadra_notte_a_1
-      - entity: input_number.delta_spegnimento_giorno_a_1
-      - entity: input_number.delta_spegnimento_notte_a_1
-      - entity: switch.termostato_autonomo_1_modalita_centralizzata
-      - entity: button.termostato_autonomo_1_rinnova_modalita_centralizzata
-  - type: entities
-    title: Zona 2 (A)
-    entities:
-      - entity: climate.termostato_autonomo_2_climatizzazione
-      - entity: number.termostato_autonomo_2_temperatura_salvata
-      - entity: input_boolean.inclusione_a_2
-      - entity: input_number.peso_a_2
-      - entity: input_number.delta_squadra_giorno_a_2
-      - entity: input_number.delta_squadra_notte_a_2
-      - entity: input_number.delta_spegnimento_giorno_a_2
-      - entity: input_number.delta_spegnimento_notte_a_2
-      - entity: switch.termostato_autonomo_2_modalita_centralizzata
-      - entity: button.termostato_autonomo_2_rinnova_modalita_centralizzata
+# Dashboard "Climaoro" - NON configurare a mano.
+#
+# La dashboard Lovelace "Climaoro" viene creata/aggiornata dinamicamente
+# dal tool tools/make_dashboard.py, che costruisce le card dagli
+# entity_id risolti da /api/climaoro/config (nessun entity_id hardcoded):
+#
+#   python tools/make_dashboard.py --url http://192.168.1.132:80 \
+#       --token <long-lived-token>
+#
+# url_path: climaoro-panel (deve contenere un trattino). L'utente può
+# comunque editarla nella UI (modalità storage).
+#
+# Struttura generata: card "Climaoro - Globale" (attivo, soglia pesi) +
+# una card per gruppo (delta comfort/eco, calendario) + una card per
+# stanza (climate, temp_salvata, peso, inclusione, modalita, rinnovo).
