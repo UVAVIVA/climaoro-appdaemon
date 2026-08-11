@@ -46,7 +46,7 @@ DASHBOARD_TITLE = "Climaoro"
 # URL della card. La query "?v=" e' un CACHE-BUSTER: HA serve /local
 # con max-age ~31gg (niente ETag), quindi a ogni modifica del JS va
 # INCREMENTATO il numero per forzare il ricaricamento nei browser.
-CARD_URL = "/local/climaoro/climaoro-calendario.js?v=2"
+CARD_URL = "/local/climaoro/climaoro-calendario.js?v=3"
 APPS_DIR = "apps"
 APPS_YAML = "apps.yaml"
 APP_FILE = "climaoro.py"
@@ -235,15 +235,22 @@ async def async_restart_addon(hass: HomeAssistant, slug: str) -> bool:
 
 
 def build_dashboard_config(cfg: dict) -> dict:
-    """Dashboard Lovelace dalla config runtime (stessa logica dello script tool)."""
+    """Dashboard Lovelace: una vista per il globale + una per ogni gruppo."""
     gen = cfg.get("global", {}).get("entities", {})
-    cards: list[dict] = [
+
+    views = [
         {
-            "type": "entities",
-            "title": "Climaoro - Globale",
-            "entities": [
-                {"entity": gen.get("attivo"), "name": "Sistema attivo"},
-                {"entity": gen.get("soglia_pesi"), "name": "Soglia pesi"},
+            "title": "Globale",
+            "path": "globale",
+            "cards": [
+                {
+                    "type": "entities",
+                    "title": "Climaoro - Globale",
+                    "entities": [
+                        {"entity": gen.get("attivo"), "name": "Sistema attivo"},
+                        {"entity": gen.get("soglia_pesi"), "name": "Soglia pesi"},
+                    ],
+                }
             ],
         }
     ]
@@ -251,7 +258,7 @@ def build_dashboard_config(cfg: dict) -> dict:
     for gruppo in cfg.get("gruppi", []):
         gent = gruppo.get("entities", {})
         label = gruppo.get("label", gruppo.get("id"))
-        cards.append(
+        cards = [
             {
                 "type": "entities",
                 "title": f"Gruppo {label}",
@@ -260,15 +267,14 @@ def build_dashboard_config(cfg: dict) -> dict:
                     {"entity": gent.get("delta_eco"), "name": "Delta eco"},
                     {"entity": gent.get("calendario"), "name": "Calendario"},
                 ],
-            }
-        )
-        cards.append(
+            },
             {
                 "type": "custom:climaoro-calendario",
+                "title": f"Calendario {label}",
                 "gruppo": gruppo.get("id"),
                 "entity": gent.get("calendario"),
-            }
-        )
+            },
+        ]
         for stanza in gruppo.get("stanze", []):
             ent = stanza.get("entities", {})
             stanza_entities = [
@@ -282,12 +288,19 @@ def build_dashboard_config(cfg: dict) -> dict:
             cards.append(
                 {
                     "type": "entities",
-                    "title": str(stanza.get("nome")),
+                    "title": f"{label} · {stanza.get('nome')}",
                     "entities": [e for e in stanza_entities if e.get("entity")],
                 }
             )
+        views.append(
+            {
+                "title": label,
+                "path": gruppo.get("id"),
+                "cards": cards,
+            }
+        )
 
-    return {"views": [{"title": DASHBOARD_TITLE, "cards": cards}]}
+    return {"views": views}
 
 
 async def _ws_run(hass: HomeAssistant, func) -> str | None:

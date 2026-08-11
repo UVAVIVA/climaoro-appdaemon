@@ -32,36 +32,43 @@ def build_dashboard(cfg: dict) -> dict:
     global_info = cfg.get("global", {})
     gen = global_info.get("entities", {})
 
-    global_card = {
-        "type": "entities",
-        "title": "Climaoro - Globale",
-        "entities": [
-            {"entity": gen.get("attivo"), "name": "Sistema attivo"},
-            {"entity": gen.get("soglia_pesi"), "name": "Soglia pesi"},
-        ],
-    }
-    cards = [global_card]
+    views = [
+        {
+            "title": "Globale",
+            "path": "globale",
+            "cards": [
+                {
+                    "type": "entities",
+                    "title": "Climaoro - Globale",
+                    "entities": [
+                        {"entity": gen.get("attivo"), "name": "Sistema attivo"},
+                        {"entity": gen.get("soglia_pesi"), "name": "Soglia pesi"},
+                    ],
+                }
+            ],
+        }
+    ]
 
     for gruppo in cfg.get("gruppi", []):
         gent = gruppo.get("entities", {})
-        cards.append(
+        label = gruppo.get("label", gruppo.get("id"))
+        cards = [
             {
                 "type": "entities",
-                "title": f"Gruppo {gruppo.get('label', gruppo.get('id'))}",
+                "title": f"Gruppo {label}",
                 "entities": [
                     {"entity": gent.get("delta_comfort"), "name": "Delta comfort"},
                     {"entity": gent.get("delta_eco"), "name": "Delta eco"},
                     {"entity": gent.get("calendario"), "name": "Calendario"},
                 ],
-            }
-        )
-        cards.append(
+            },
             {
                 "type": "custom:climaoro-calendario",
+                "title": f"Calendario {label}",
                 "gruppo": gruppo.get("id"),
                 "entity": gent.get("calendario"),
-            }
-        )
+            },
+        ]
         for stanza in gruppo.get("stanze", []):
             ent = stanza.get("entities", {})
             stanza_entities = [
@@ -79,15 +86,15 @@ def build_dashboard(cfg: dict) -> dict:
                     "entities": [e for e in stanza_entities if e.get("entity")],
                 }
             )
-
-    return {
-        "views": [
+        views.append(
             {
-                "title": "Climaoro",
+                "title": label,
+                "path": gruppo.get("id"),
                 "cards": cards,
             }
-        ],
-    }
+        )
+
+    return {"views": views}
 
 
 async def main() -> None:

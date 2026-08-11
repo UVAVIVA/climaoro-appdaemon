@@ -7,6 +7,7 @@ from typing import Any
 from homeassistant import config_entries
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
@@ -85,10 +86,10 @@ async def _resolve_entity_uids(
     hass: HomeAssistant, selezioni: dict[str, str]
 ) -> dict[str, str | None]:
     """Unique_id corrente per ogni entity_id selezionato (None se assente)."""
-    er = hass.helpers.entity_registry.async_get(hass)
+    er_registry = er.async_get(hass)
     uids: dict[str, str | None] = {}
     for chiave, entity_id in selezioni.items():
-        entry = er.async_get(entity_id)
+        entry = er_registry.async_get(entity_id)
         uids[chiave] = entry.unique_id if entry else None
     return uids
 

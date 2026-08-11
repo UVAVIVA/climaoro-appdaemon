@@ -51,7 +51,8 @@ PERCORSO.txt                  Sintesi del progetto (leggere per primo)
 Ogni ciclo (60s), per ogni gruppo in fascia non-autonoma:
 
 1. Calcola **guardia** = temp_salvata - delta e **lavoro** =
-   temp_salvata + delta dalla fascia corrente.
+   temp_salvata (il riscaldamento arriva al massimo alla temperatura
+   salvata, mai sopra) dalla fascia corrente.
 2. Allinea il setpoint a guardia e raccoglie le stanze in richiesta
    (temp reale <= temp_salvata - 0.5), sommandone i pesi.
 3. Se qualche stanza è già in **riscaldamento** (`hvac_action=heating`):
@@ -61,10 +62,24 @@ Ogni ciclo (60s), per ogni gruppo in fascia non-autonoma:
 5. Altrimenti **emergenza individuale**: stanza con temp <= guardia - 0.4
    accesa a lavoro.
 
-Sicurezza: prima di un comando a un climate l'app accende
-automaticamente lo `switch.<dev>_modalita_centralizzata` se spento.
-Un timer periodico (default 240s) preme il pulsante "rinnovo" delle
-stanze incluse (non in fascia autonoma).
+Nota: `delta_comfort`/`delta_eco` hanno il ruolo del "delta squadra"
+del sistema originale: si **sottraggono** sempre a temp_salvata per
+definire la guardia (attesa/risparmio). Il tetto di riscaldamento è la
+temperatura salvata stessa.
+
+Sicurezza e centralizzata:
+- Prima di un comando a un climate l'app accende automaticamente lo
+  `switch.<dev>_modalita_centralizzata` se spento.
+- Quando il master `switch.climaoro_attivo` passa su **ON**, l'app
+  attiva subito la modalità centralizzata di tutte le stanze incluse
+  (non in fascia `autonomo`). Allo spegnimento del master **non**
+  spegne nulla: basta che il rinnovo si fermi.
+- Un check periodico (default **20 min**, configurabile con
+  `check_centralizzata_sec`) ri-asserta la centralizzata se il master è
+  ancora ON (copre anche i riavvii dell'app con master già attivo).
+- Il timer di rinnovo (default 240s, `rinnovo_sec`) preme il pulsante
+  "rinnovo" delle stanze incluse (non in fascia autonoma); quando il
+  master è OFF il rinnovo resta fermo ("Rinnovo saltato: master spento").
 
 ## Installazione
 
@@ -73,7 +88,8 @@ stanze incluse (non in fascia autonoma).
 2. **Aggiungi integrazione -> Climaoro**: il wizard guida nell'inserimento
    delle entità chiave delle stanze; al termine crea le entità di contorno.
 3. Installare l'addon **AppDaemon**; copiare `appdaemon/climaoro.py` e
-   `appdaemon/apps.yaml` in `<addon_configs>/<id_appdaemon>/apps/`.
+   `appdaemon/apps.yaml` in `<addon_configs>/<id_appdaemon>/apps/`
+   (`<id_appdaemon>` è l'id dell'addon, es. `a0d7b954_appdaemon`).
 4. In `apps.yaml` impostare:
    ```yaml
    climaoro:
@@ -82,8 +98,25 @@ stanze incluse (non in fascia autonoma).
      ha_url: http://<ip-ha>:80
      ha_token: <token long-lived HA>
    ```
+   Se l'app gira nell'addon AppDaemon con il permesso
+   `homeassistant_api`, usa automaticamente il `SUPERVISOR_TOKEN`
+   (`ha_url: http://supervisor/core`) e il token non serve.
 5. Riavviare AppDaemon. Il pannello "Climaoro" è disponibile a
    `/climaoro-panel`.
+
+Configurabili in `apps.yaml` (oltre a `ha_url`/`ha_token`):
+`refresh_sec` (600), `cycle_sec` (60), `rinnovo_sec` (240),
+`check_centralizzata_sec` (1200).
+
+## Pannello multi-vista
+
+La dashboard "Climaoro" (url_path `climaoro-panel`) è organizzata in
+**viste separate** (una per pagina, in ordine nel menu laterale):
+
+- **Globale** (`globale`): master `climaoro_attivo` + soglia pesi.
+- Una vista per gruppo (`giorno`, `notte`, `servizi`): card gruppo
+  (delta comfort/eco + calendario), card calendario 7x24 e una card per
+  ogni stanza (climate, temp salvata, peso, inclusione, modalità, rinnovo).
 
 ## Card calendario 7x24
 
@@ -131,6 +164,11 @@ Il climate simulato su HA 2026.8 usa la piattaforma standard
 Poi si manipolano i valori sim e si verificano i log dell'app (cicli,
 fascia, guardia/lavoro, priorità, soglia pesi, emergenza). Vedi
 `PERCORSO.txt` -> "STATO ATTUALE" per l'esito dei test end-to-end.
+
+> Nota: sulla VM di produzione il simulatore è stato **rimosso**
+> (include `sim_*.yaml` tolti da `configuration.yaml` + entità pulite dal
+> registry) — i test si fanno in un'installazione separata o riattivando
+> gli include.
 
 ## Repository
 

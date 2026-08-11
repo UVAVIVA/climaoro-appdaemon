@@ -45,6 +45,7 @@ class Climaoro(hass.Hass):
         self.refresh_sec = self.args.get("refresh_sec", 600)
         self.cycle_sec = self.args.get("cycle_sec", 60)
         self.rinnovo_sec = self.args.get("rinnovo_sec", 240)
+        self.check_centralizzata_sec = self.args.get("check_centralizzata_sec", 1200)
 
         self.config = None
         self.config_time = 0
@@ -59,6 +60,10 @@ class Climaoro(hass.Hass):
         self.run_every(self.control_cycle, "now", self.cycle_sec)
         self.run_every(self.rinnovo_modalita, "now", self.rinnovo_sec)
         self.listen_event(self._on_config_updated, EVENT_CONFIG_UPDATED)
+        attivo_eid = ((self.config.get("global") or {}).get("entities") or {}).get("attivo")
+        if attivo_eid:
+            self.listen_state(self._on_attivo_changed, attivo_eid)
+        self.run_every(self.controllo_centralizzata, "now", self.check_centralizzata_sec)
         self.log("App Climaoro avviata (gruppi: %d)", len(self.config.get("gruppi", [])))
 
     def _retry_load(self, kwargs):
@@ -69,6 +74,10 @@ class Climaoro(hass.Hass):
         self.run_every(self._refresh_config, "now", self.refresh_sec)
         self.run_every(self.control_cycle, "now", self.cycle_sec)
         self.run_every(self.rinnovo_modalita, "now", self.rinnovo_sec)
+        attivo_eid = ((self.config.get("global") or {}).get("entities") or {}).get("attivo")
+        if attivo_eid:
+            self.listen_state(self._on_attivo_changed, attivo_eid)
+        self.run_every(self.controllo_centralizzata, "now", self.check_centralizzata_sec)
         self.log("Config caricata dopo retry (gruppi: %d)", len(self.config.get("gruppi", [])))
 
     # ---------------------------------------------------------------- config
@@ -159,6 +168,45 @@ class Climaoro(hass.Hass):
                 if eid_rinnovo:
                     self.call_service("button/press", entity_id=eid_rinnovo)
                     self.log("Rinnovo modalita' stanza '%s' (%s)", stanza.get("nome"), eid_rinnovo)
+
+    def _on_attivo_changed(self, entity, attribute, old, new, kwargs):
+        """All'attivazione del master accende la modalita' centralizzata."""
+        if self.config is None:
+            return
+        if new == "on":
+            self.log("Master acceso: attivazione modalita' centralizzata.")
+            self._refresh_config(None)
+            self._attiva_centralizzata_tutte()
+
+    def controllo_centralizzata(self, kwargs):
+        """Controllo periodico: con master acceso, ri-assert della centralizzata."""
+        if self.config is None:
+            return
+        self._refresh_config(None)
+        g = self.config.get("global") or {}
+        attivo_eid = (g.get("entities") or {}).get("attivo")
+        stato = self.get_state(attivo_eid) if attivo_eid else None
+        if stato == "on":
+            self._attiva_centralizzata_tutte()
+
+    def _attiva_centralizzata_tutte(self):
+        """Accende la modalita' centralizzata per le stanze gestibili."""
+        if self.config is None:
+            return
+        for gruppo in self.config.get("gruppi", []):
+            if self._fascia_corrente(gruppo) == VALUE_AUTONOMO:
+                continue
+            for stanza in gruppo.get("stanze", []):
+                e = stanza.get("entities") or {}
+                eid_incl = e.get("inclusione")
+                if eid_incl and self.get_state(eid_incl) != "on":
+                    continue
+                eid_modalita = e.get("modalita")
+                if not eid_modalita or self.get_state(eid_modalita) == "on":
+                    continue
+                self.call_service("switch/turn_on", entity_id=eid_modalita)
+                self.log("Attivata modalita' centralizzata stanza '%s' (%s).",
+                         stanza.get("nome"), eid_modalita)
 
     def _comando_sicuro_per_stanza(self, stanza, entity, service, data, stanza_id):
         """Accende prima il pulsante modalita' centralizzata se necessario."""
@@ -271,7 +319,7 @@ class Climaoro(hass.Hass):
 
         for z in zone_ok:
             guardia = z["t_salvata"] - delta
-            lavoro = z["t_salvata"] + delta
+            lavoro = z["t_salvata"]
 
             self.log("Stanza %s: guardia=%.1f, lavoro=%.1f, reale=%.1f, setpoint=%.1f, action=%s",
                      z["nome"], guardia, lavoro, z["temp"], z["setpoint"], z["action"])
@@ -298,11 +346,11 @@ class Climaoro(hass.Hass):
         if zone_riscaldamento:
             self.log("Priorita': zone in riscaldamento -> accendo le richiedenti.")
             for nome in lista_richieste:
-                self._accendi_stanza(gruppo, nome, delta)
+                self._accendi_stanza(gruppo, nome)
         elif totale_pesi >= soglia_pesi:
             self.log("Soglia pesi raggiunta (%.1f >= %.1f) -> accensioni collettive.", totale_pesi, soglia_pesi)
             for nome in lista_richieste:
-                self._accendi_stanza(gruppo, nome, delta)
+                self._accendi_stanza(gruppo, nome)
         else:
             self.log("Emergenza individuale.")
             for z in zone_ok:
@@ -313,7 +361,7 @@ class Climaoro(hass.Hass):
                     self.log("Emergenza stanza %s: %.1f <= %.1f", z["nome"], z["temp"], guardia - 0.4)
                     self._accendi_stanza(gruppo, z["nome"], delta)
 
-    def _accendi_stanza(self, gruppo, nome, delta):
+    def _accendi_stanza(self, gruppo, nome):
         stanza = self._stanza_by_name(gruppo, nome)
         if stanza is None:
             return
@@ -322,7 +370,7 @@ class Climaoro(hass.Hass):
         if t_salvata is None:
             self.log("ERRORE: Stanza %s: temp_salvata mancante - accensione saltata.", nome, level="ERROR")
             return
-        lavoro = t_salvata + delta
+        lavoro = t_salvata
         self._comando_sicuro_per_stanza(
             stanza, e.get("clima"), "climate/set_temperature",
             {"temperature": lavoro}, nome

@@ -59,7 +59,15 @@ class ClimaoroCalendario extends HTMLElement {
     // Orientamento: righe = 24 ore, colonne = 7 giorni.
     // Cosi' la tabella resta ~250px di larghezza (non sborda piu'
     // dalla card e non c'e' scroll da far "risaltare" al click).
-    let html = "<table style='border-collapse:collapse;margin:0 auto'>";
+    let html = "";
+    const nome = this._config.title || this._config.nome;
+    if (nome) {
+      html +=
+        "<div style='text-align:center;font-weight:500;font-size:14px;padding-bottom:6px'>" +
+        nome +
+        "</div>";
+    }
+    html += "<table style='border-collapse:collapse;margin:0 auto'>";
     html += "<tr><th style='padding:2px 6px;font-size:11px'></th>";
     for (let d = 0; d < DAYS.length; d++) {
       html +=

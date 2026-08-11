@@ -42,13 +42,19 @@ emergenza individuale).
   Per le 4 entità chiave della stanza (clima, temp_salvata, modalita,
   rinnovo) il wizard salva ANCHE l'unique_id -> risoluzione rename-proof.
 - App AppDaemon GENERICA (appdaemon/climaoro.py): unica classe, args
-  ha_url + ha_token (+ refresh_sec/cycle_sec/rinnovo_sec). Non conosce
-  alcuna entità: legge /api/climaoro/config a ogni refresh e usa gli
-  entity_id risolti. Logica: fascia oraria -> delta gruppo; zone in
-  riscaldamento = priorità; altrimenti soglia pesi (accensione
-  collettiva); altrimenti emergenza individuale (temp <= guardia - 0.4).
-  Sicurezza: prima di un comando a un climate accende automaticamente
-  lo switch modalita_centralizzata se spento.
+  ha_url + ha_token (+ refresh_sec/cycle_sec/rinnovo_sec/
+  check_centralizzata_sec). Non conosce alcuna entità: legge
+  /api/climaoro/config a ogni refresh e usa gli entity_id risolti.
+  Logica: fascia oraria -> delta gruppo; zone in riscaldamento =
+  priorità; altrimenti soglia pesi (accensione collettiva); altrimenti
+  emergenza individuale (temp <= guardia - 0.4).
+  Centralizzata: (a) prima di un comando a un climate accende
+  automaticamente lo switch modalita_centralizzata se spento; (b) al
+  master ON attiva la centralizzata di tutte le stanze incluse (nessuna
+  azione al master OFF); (c) check periodico (default 20 min,
+  check_centralizzata_sec) ri-asserta se master ancora ON (copre i
+  riavvii dell'app con master già attivo). Rinnovo (rinnovo_sec) fermo
+  quando master OFF ("Rinnovo saltato: master spento").
 - Pannello frontend: dashboard LOVELACE storage "Climaoro"
   (url_path climaoro-panel) creata via websocket dal file locale
   .storage/lovelace.climaoro_panel, costruita dagli entity_id risolti
@@ -148,6 +154,40 @@ emergenza individuale).
         componente. VERIFICATO end-to-end: evento visto da subscribe
         websocket + log addon "Evento climaoro_config_updated ricevuto:
         refresh immediato della config." (15:02).
+[11/08 sera] ATTIVAZIONE CENTRALIZZATA AL MASTER ON + CHECK PERIODICO:
+        nuove funzioni app _on_attivo_changed (listen_state su
+        switch.climaoro_attivo; al "on" -> _refresh_config + attiva la
+        centralizzata di tutte le stanze incluse, esclusa fascia
+        "autonomo"), controllo_centralizzata (ogni check_centralizzata_sec,
+        default 1200 = 20 min; ri-asserta se master ancora on) e
+        _attiva_centralizzata_tutte. NESSUNA disattivazione al master OFF
+        (scelta utente: basta fermare il rinnovo). Copie identiche
+        appdaemon/climaoro.py e custom_components/climaoro/appdaemon_app/
+        climaoro.py (hash F0ECC02B...). VERIFICATO su VM: toggle master
+        off->on -> log "Master acceso: attivazione modalita' centralizzata."
+        + "Attivata modalita' centralizzata stanza 'b3'/'a2'/'a1'" + tutte
+        le modalita' gestite on.
+[11/08 sera] PANNELLO MULTI-VISTA: build_dashboard_config (provision.py)
+        e build_dashboard (tools/make_dashboard.py) riscritti -> vista
+        Globale (path globale) + una vista per gruppo (path = id gruppo:
+        giorno/notte/servizi) con card gruppo + calendario + stanze.
+        VERIFICATO su VM (provisiona + core restart): 4 viste in
+        .storage/lovelace.climaoro_panel (globale 1 card, giorno 4,
+        notte 4, servizi 3).
+[11/08 sera] RINNOVO FERMO CON MASTER SPENTO: log "Rinnovo saltato:
+        master spento." (ultimo rinnovo 21:00, poi fermo) -> i timestamp
+        sui button sono "ultima pressione", non pressioni live.
+[11/08 notte] RIMOZIONE SIMULATORE DALLA VM: tolti i 5 include sim_*.yaml
+        da configuration.yaml (input_number/input_boolean/input_button/
+        template/climate). Le entità sim non sparivano (restavano come
+        "restored" unavailable nel entity_registry): FIX = stop core,
+        pulizia con jq delle 20 voci sim/im (im_modalita_1/2,
+        im_rinnovo_1/2, im_temp_salvata_1/2, im_temp_attuale_1/2,
+        im_clima_1/2, input_boolean/number/button sim_*), start core.
+        Backup: core.entity_registry.bak_sim_cleanup. VERIFICATO:
+        0 entità sim residue, entità reali ESPHome intatte (a1/a2 con
+        suffisso _2, a5 senza), dashboard 4 viste ok, app riavviata.
+        Nota: i file sim_*.yaml restano su disco ma inattivi.
 
 -----------------------------------------------------------------------
 4. PUNTI APERTI / DA DEFINIRE
@@ -164,7 +204,7 @@ emergenza individuale).
   entity: l'app usa get_state/call_service via namespace HASS, ok.
 
 -----------------------------------------------------------------------
-5. STATO ATTUALE (10/08 - VERIFICATO END-TO-END)
+5. STATO ATTUALE (11/08 - VERIFICATO END-TO-END)
 -----------------------------------------------------------------------
 - Repo: D:\MIO_UTENTE\Desktop\APPDAEMON\climaoro-appdaemon
 - HA virtuale (VirtualBox "Home Assistant", HAOS 2026.8.1):
@@ -218,7 +258,8 @@ emergenza individuale).
 - REFRESH IMMEDIATO: evento climaoro_config_updated (vedi sez. 3,
   [11/08]). Cambi di delta/peso/inclusione/attivo/calendario -> l'app
   rilegge subito /api/climaoro/config. VERIFICATO.
-- ENTITÀ SIM SU VM (per test):
+- ENTITÀ SIM SU VM (per test): RIMOSSE (vedi sez. 3, [11/08 notte]).
+  Il simulatore era composto da:
   * input_number sim_termostato_1_temperatura_salvata (20) / _attuale (18)
   * input_boolean sim_termostato_1_modalita_centralizzata /
     _riscaldamento (heater)
@@ -230,6 +271,17 @@ emergenza individuale).
   * climate.termostato_autonomo_1_climatizzazione (generic_thermostat)
   * configuration.yaml: input_number/input_boolean/input_button/template
     + climate: !include sim_climate.yaml
+- DISPOSITIVI REALI: 6 termostati ESPHome (termostato_autonomo_1..6).
+  Config entry 01KZS0RZ281A6MDKZ107H57RMX (attivo + 3 gruppi
+  giorno/notte/servizi; stanze a1/a2/a5 + b2/b3, le prime con le entità
+  _2 ESPHome, a5 senza suffisso perché senza conflitto con il sim).
+- TEST CENTRALIZZATA (11/08): toggle master off->on -> tutte le
+  modalita' centralizzate accese (a1/a2/a5/b2/b3), log di attivazione.
+  Rinnovo fermo con master spento. Deploy: sorgente custom_components
+  aggiornata sul VM + climaoro.provisiona (NON scp diretto all'addon:
+  l'addon riscrive apps/climaoro.py a ogni avvio dagli init_commands).
+- PANNELLO MULTI-VISTA: 4 viste verificate (globale/giorno/notte/servizi).
+- SIMULATORE: rimosso dalla VM (include + 20 entità ripulite dal registry).
 
 -----------------------------------------------------------------------
 6. PROSSIMI PASSI
@@ -243,7 +295,9 @@ emergenza individuale).
    (righe=ore 24 x colonne=giorni 7) in www/climaoro-calendario.js;
    ridistribuito in config/www/climaoro/ e custom_components/www/
    (entrambe le copie su VM) + interazione set_calendario verificata.
-5. Aggiornare README.md (architettura v2, installazione, test).
+5. (FATTO) Aggiornare README.md (architettura v2, installazione, test):
+   centralizzata al master ON + check periodico, pannello multi-vista,
+   simulatore rimosso, opzioni apps.yaml.
 6. Portare la logica di derivazione dal generatore.py dentro
    l'integrazione (creazione helper automatica dal wizard).
 7. Wizard completo: inserimento entità chiave + pulsante conferma logica
@@ -252,6 +306,8 @@ emergenza individuale).
    (calendario). (Il refresh immediato della config e' FATTO: evento
    climaoro_config_updated -> vedi sez. 3 [11/08]).
 9. Modalità simulazione guidata dall'integrazione (oggi via YAML manuale).
-10. Commit + push su GitHub quando l'utente conferma.
+10. Commit + push su GitHub (fatto l'11/08: rinnovo master, centralizzata
+    master ON + check 20 min, pannello multi-vista, simulatore rimosso).
+    RIMANE DA DECIDERE: repo pubblico per HACS o privato.
 
 =======================================================================
