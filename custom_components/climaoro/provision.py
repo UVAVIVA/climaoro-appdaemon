@@ -43,7 +43,10 @@ _LOGGER = logging.getLogger(__name__)
 DEFAULT_APPD_ADDON = "a0d7b954_appdaemon"
 DASHBOARD_URL_PATH = "climaoro-panel"
 DASHBOARD_TITLE = "Climaoro"
-CARD_URL = "/local/climaoro/climaoro-calendario.js"
+# URL della card. La query "?v=" e' un CACHE-BUSTER: HA serve /local
+# con max-age ~31gg (niente ETag), quindi a ogni modifica del JS va
+# INCREMENTATO il numero per forzare il ricaricamento nei browser.
+CARD_URL = "/local/climaoro/climaoro-calendario.js?v=2"
 APPS_DIR = "apps"
 APPS_YAML = "apps.yaml"
 APP_FILE = "climaoro.py"
