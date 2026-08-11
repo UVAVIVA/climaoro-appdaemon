@@ -4,8 +4,10 @@ climaoro:
 
   # URL base di HA (nessun entity_id qui: tutto viene risolto da
   # /api/climaoro/config esposta dal custom component).
-  ha_url: http://192.168.1.132:80
-  ha_token: "<INSERT_LONG_LIVED_HA_TOKEN>"
+  # Nell'addon AppDaemon il provisioning genera questo file con
+  # ha_url: http://supervisor/core (l'app usa SUPERVISOR_TOKEN).
+  ha_url: http://supervisor/core
+  token: "<INSERT_LONG_LIVED_HA_TOKEN>"
 
   # Opzionali (default indicati):
   # refresh_sec: 600    # quanto spesso rileggere la config runtime

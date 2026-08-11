@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from homeassistant.components import websocket_api
@@ -34,6 +35,7 @@ from .const import (
     CONF_TEMP_SALVATA,
     CONF_TEMP_SALVATA_UID,
     DOMAIN,
+    EVENT_CONFIG_UPDATED,
     GROUP_LABELS,
     GROUPS,
     VALUE_AUTONOMO,
@@ -59,6 +61,14 @@ def get_data(hass: HomeAssistant) -> dict[str, Any]:
 def _get_entry(hass: HomeAssistant) -> ConfigEntry | None:
     entries = hass.config_entries.async_entries(DOMAIN)
     return entries[0] if entries else None
+
+
+def fire_config_updated(hass: HomeAssistant) -> None:
+    """Notifica l'app AppDaemon che la config runtime e' cambiata.
+
+    Safe da qualsiasi contesto (usa la variante sync del bus).
+    """
+    hass.bus.fire(EVENT_CONFIG_UPDATED)
 
 
 def get_group(hass: HomeAssistant, gruppo: str) -> dict[str, Any] | None:
@@ -189,7 +199,25 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Registra endpoint REST e websocket (una sola volta)."""
     websocket_api.async_register_command(hass, _ws_config)
     hass.http.register_view(ClimaoroConfigView())
+    try:
+        await hass.async_add_executor_job(_copy_www, hass)
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.warning("Copia file www fallita: %s", err)
     return True
+
+
+def _copy_www(hass: HomeAssistant) -> None:
+    """Copia i file frontend in config/www (serviti su /local)."""
+    src_dir = Path(__file__).parent / "www"
+    if not src_dir.exists():
+        return
+    dest_dir = Path(hass.config.path("www")) / "climaoro"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    for src in src_dir.iterdir():
+        if not src.is_file():
+            continue
+        dest = dest_dir / src.name
+        dest.write_bytes(src.read_bytes())
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -203,6 +231,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _register_services(hass)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    async def _run_provision() -> None:
+        """Provisioning automatico dopo il setup (AppDaemon + dashboard)."""
+        from . import provision
+
+        try:
+            results = await provision.async_provision(hass, entry)
+            for line in results:
+                _LOGGER.warning("Climaoro provision: %s", line)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.error("Climaoro provision fallita: %s", err)
+
+    entry.async_create_task(hass, _run_provision())
     return True
 
 
@@ -225,6 +266,7 @@ def async_update_group_calendar(
     groups[gruppo] = group
     options[CONF_GROUPS] = groups
     hass.config_entries.async_update_entry(entry, options=options)
+    fire_config_updated(hass)
 
 
 def _register_services(hass: HomeAssistant) -> None:
@@ -273,4 +315,23 @@ def _register_services(hass: HomeAssistant) -> None:
                 vol.Required("valore"): vol.In([VALUE_ECO, VALUE_COMFORT, VALUE_AUTONOMO]),
             }
         ),
+    )
+
+    async def provisiona(call: ServiceCall) -> None:
+        """Riesegue il provisioning completo (AppDaemon + dashboard)."""
+        from . import provision
+
+        entry = _get_entry(hass)
+        if entry is None:
+            _LOGGER.error("Nessuna config entry Climaoro attiva")
+            return
+        results = await provision.async_provision(hass, entry)
+        for line in results:
+            _LOGGER.warning("Climaoro provisiona: %s", line)
+
+    hass.services.async_register(
+        DOMAIN,
+        "provisiona",
+        provisiona,
+        schema=vol.Schema({}),
     )

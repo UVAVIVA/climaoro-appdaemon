@@ -14,7 +14,7 @@ from .const import (
     DOMAIN,
 )
 
-from . import get_data, get_rooms
+from . import fire_config_updated, get_data, get_rooms
 
 
 class _SwitchEntityBase(SwitchEntity):
@@ -28,6 +28,7 @@ class _SwitchEntityBase(SwitchEntity):
     def _update_entry(self, options: dict) -> None:
         self._hass.config_entries.async_update_entry(self._entry, options=options)
         self._entry = self._hass.config_entries.async_entries(DOMAIN)[0]
+        fire_config_updated(self._hass)
 
 
 class Attivo(_SwitchEntityBase):

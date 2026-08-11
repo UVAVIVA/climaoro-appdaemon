@@ -7,6 +7,11 @@ from typing import Final
 DOMAIN: Final = "climaoro"
 NAME: Final = "Climaoro"
 
+# Evento emesso quando le options della config entry cambiano: l'app
+# AppDaemon lo ascolta per rileggere /api/climaoro/config all'istante
+# (senza attendere il refresh periodico).
+EVENT_CONFIG_UPDATED: Final = f"{DOMAIN}_config_updated"
+
 PLATFORMS: Final = ["number", "switch", "sensor"]
 
 # Gruppi fissi con nomi guida (slug -> etichetta).

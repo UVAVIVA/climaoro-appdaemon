@@ -85,6 +85,37 @@ stanze incluse (non in fascia autonoma).
 5. Riavviare AppDaemon. Il pannello "Climaoro" è disponibile a
    `/climaoro-panel`.
 
+## Card calendario 7x24
+
+La card `climaoro-calendario` (risorsa `/local/climaoro/climaoro-calendario.js`)
+mostra il calendario del gruppo con **righe = 24 ore** e **colonne = 7 giorni**
+(orientamento trasposto: ~250px, resta dentro la card senza scroll).
+Serve `gruppo` (giorno/notte/servizi) ed `entity` (il sensor
+`climaoro_<gruppo>_calendario`). Un click fa ciclare la cella
+eco -> comfort -> autonomo via `climaoro.set_calendario`.
+
+## Refresh configurazione immediato
+
+Quando cambiano le options (delta, peso, inclusione, attivo, calendario)
+l'integrazione emette l'evento `climaoro_config_updated`; l'app AppDaemon
+lo ascolta e rilegge subito `/api/climaoro/config`, senza attendere il
+refresh periodico (`refresh_sec` resta come fallback).
+
+## Deploy su VM di test (HAOS su VirtualBox)
+
+- Avviare la VM: `VBoxManage startvm "Home Assistant" --type headless`.
+- Accesso SSH: `root@127.0.0.1:2222` (port-forward NAT verso porta 22)
+  con chiave `sshkeys/id_climaoro` (non committata nel repo).
+- Copiare la card aggiornata **in entrambe** le posizioni:
+  ```
+  scp -P 2222 .../www/climaoro-calendario.js root@127.0.0.1:/homeassistant/custom_components/climaoro/www/
+  scp -P 2222 .../www/climaoro-calendario.js root@127.0.0.1:/homeassistant/www/climaoro/
+  ```
+  La prima è la sorgente (ri-copiata su ogni setup), la seconda è la
+  risorsa servita da `/local/climaoro/climaoro-calendario.js`.
+- HTTP di verifica: `http://127.0.0.1:8080/local/climaoro/climaoro-calendario.js`
+  (il 8080 è il port-forward NAT verso la porta 80 di HA).
+
 ## Test senza dispositivi reali (HA virtuale)
 
 Il climate simulato su HA 2026.8 usa la piattaforma standard

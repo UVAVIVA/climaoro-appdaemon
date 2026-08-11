@@ -55,6 +55,13 @@ def build_dashboard(cfg: dict) -> dict:
                 ],
             }
         )
+        cards.append(
+            {
+                "type": "custom:climaoro-calendario",
+                "gruppo": gruppo.get("id"),
+                "entity": gent.get("calendario"),
+            }
+        )
         for stanza in gruppo.get("stanze", []):
             ent = stanza.get("entities", {})
             stanza_entities = [

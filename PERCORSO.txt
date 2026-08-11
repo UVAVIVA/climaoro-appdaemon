@@ -101,15 +101,57 @@ emergenza individuale).
         websocket ("lovelace/dashboards/create" richiede url_path CON
         trattino: climaoro-panel), config salvata con
         "lovelace/config/save". Accessibile a /climaoro-panel.
+[10/08 sera] PROVISIONING APPDEMON RESO DAVVERO FUNZIONANTE (fix 2 bug):
+        (a) MOUNT /addon_configs NEL CORE = COPY-ON-WRITE ISOLATO
+        (verificato con stat: core dev=97 vs host reale dev=2056, inode
+        diversi). Le scritture dirette dell'integrazione NON arrivavano
+        MAI all'addon ("file scritti+riavvio ok" erano falsi). FIX:
+        il core imposta gli INIT_COMMANDS nelle options dell'addon
+        (mgr.async_set_addon_options): comando unico con base64 di
+        climaoro.py + apps.yaml che a ogni avvio scrive i file dentro
+        /config/apps (dove /config E' il mount host reale). Fallback
+        scrittura diretta se hassio assente. Riavvio solo se le options
+        cambiano. VERIFICATO: file reali aggiornati (mtime 22:19).
+        (b) AUTH VIA http://supervisor/core: il proxy supervisor
+        accetta SOLO il SUPERVISOR_TOKEN dell'addon (con homeassistant_api),
+        NON i token long-lived HA (401). FIX: l'app usa
+        os.environ["SUPERVISOR_TOKEN"] con fallback a token/ha_token.
+        VERIFICATO: "Config runtime caricata (2 gruppi, 12 entita')".
+[10/08 sera] DEDUP RISORSE CARD: erano 21 duplicati di
+        /local/climaoro/climaoro-calendario.js in .storage/lovelace_resources
+        (la dedup eliminava solo URL DIVERSE da CARD_URL). FIX in
+        async_ensure_resource: ora ne resta 1 sola. VERIFICATO.
+[10/08 sera] LOG: il journald del core mostra SOLO WARNING+ (0 righe INFO
+        nell'intero log) -> i log di provisioning restano a WARNING
+        per essere visibili. Rimossi tutti i probe di debug.
+[10/08 sera] BUG SEGNALATO CALENDARIO: la card custom 7x24 (righe=giorni,
+        24 ore come colonne, ~670px) NON sta nella schermata; si scrolla
+        ma al click l'overflow "risalta" e la tabella torna a spostarsi.
+        TODO in cima a custom_components/climaoro/www/climaoro-calendario.js.
+        Fix candidati: (1) invertire orientamento (righe=ore 24 x colonne=
+        giorni 7), oppure (2) celle piu' piccole / tabella piu' lunga.
+        DA RISOLVERE (sessione successiva).
+[11/08] FIX BUG CALENDARIO APPLICATO: _render() trasposto (righe=24 ore x
+        colonne=7 giorni, ~250px). Ridistribuito in /homeassistant/
+        custom_components/climaoro/www/ E /homeassistant/www/climaoro/
+        (entrambe le copie, 3868 byte). HTTP 200 su /local/climaoro/
+        climaoro-calendario.js. Interazione verificata: set_calendario
+        giorno/lun/14 -> comfort in /api/climaoro/config, poi ripristino
+        eco. Vedi sezione 5 e 6.
+[11/08] REFRESH IMMEDIATO CONFIG APPDEMON: l'integrazione emette l'evento
+        climaoro_config_updated (bus HA) ogni volta che cambiano le
+        options (fire in async_update_group_calendar + _update_entry di
+        number.py/switch.py, variante sync hass.bus.fire). L'app ascolta
+        (listen_event) e fa _refresh_config() all'istante (senza attendere
+        refresh_sec). NOTA: il reload della config entry NON ricarica i
+        moduli Python -> serve "ha core restart" dopo un cambio del
+        componente. VERIFICATO end-to-end: evento visto da subscribe
+        websocket + log addon "Evento climaoro_config_updated ricevuto:
+        refresh immediato della config." (15:02).
 
 -----------------------------------------------------------------------
 4. PUNTI APERTI / DA DEFINIRE
 -----------------------------------------------------------------------
-- AppDaemon: gestire il refresh della config quando l'utente modifica
-  le options da UI (ora l'app rilegge ogni refresh_sec=600s; valutare
-  notifica via evento/websocket per refresh immediato).
-- Auto-reload di AppDaemon dopo la scrittura dei file da parte
-  dell'integrazione (attualmente il deploy dei file è manuale/scp).
 - Distribuzione: installazione manuale (copia cartella) per ora; HACS
   come evoluzione.
 - La dashboard Lovelace non è "fissa": è editabile dall'utente. Se si
@@ -137,10 +179,12 @@ emergenza individuale).
   (abilitato, entry "climaoro" LOADED, 12 entità attive).
 - ENDPOINT: /api/climaoro/config -> 200, struttura generica completa
   (global + 2 gruppi + entities risolte). Websocket climaoro/config ok.
-- AppDaemon: addon a0d7b954 installato/started; app climaoro in
-  esecuzione in /addon_configs/a0d7b954_appdaemon/apps/ (climaoro.py +
-  apps.yaml con ha_url http://192.168.1.132:80 + token long-lived).
-  Config runtime caricata (2 gruppi, 12 entità). CICLI ogni 60s.
+- AppDaemon: addon a0d7b954 installato/started; PROVISIONING AUTOMATICO
+  FUNZIONANTE: il core imposta gli init_commands (options addon) che
+  scrivono climaoro.py + apps.yaml (ha_url http://supervisor/core +
+  token) dentro /addon_configs/a0d7b954_appdaemon/apps/ (mount host
+  reale). L'app usa SUPERVISOR_TOKEN. Config runtime caricata
+  (2 gruppi, 12 entità). CICLI ogni 60s.
 - TEST END-TO-END (sim con climate generic_thermostat) - TUTTI VERIFICATI
   nei log addon:
   * RAMO PRIORITA': stanza con hvac_action=heating -> "sta scaldando -
@@ -165,6 +209,15 @@ emergenza individuale).
     consecutive riuscite (delta_eco 0.8->1.0, peso 2.0->1.5).
 - PANNELLO: dashboard Lovelace "Climaoro" (climaoro-panel) creata e
   salvata; 20 entità risolte; HTTP 200 su http://127.0.0.1:8080/climaoro-panel.
+- RISORSE CARD: .storage/lovelace_resources pulito -> 1 sola risorsa
+  /local/climaoro/climaoro-calendario.js (dedup funzionante).
+- CARD CALENDARIO: BUG ORIENTAMENTO RISOLTO (vedi sez. 3, [11/08]).
+  Deployata (orientamento trasposto 24x7) in custom_components/climaoro/
+  www/ e /homeassistant/www/climaoro/. Risorsa HTTP 200 e servizio
+  set_calendario verificato (cella -> comfort -> eco).
+- REFRESH IMMEDIATO: evento climaoro_config_updated (vedi sez. 3,
+  [11/08]). Cambi di delta/peso/inclusione/attivo/calendario -> l'app
+  rilegge subito /api/climaoro/config. VERIFICATO.
 - ENTITÀ SIM SU VM (per test):
   * input_number sim_termostato_1_temperatura_salvata (20) / _attuale (18)
   * input_boolean sim_termostato_1_modalita_centralizzata /
@@ -183,15 +236,22 @@ emergenza individuale).
 -----------------------------------------------------------------------
 1. (FATTO) Climate simulato su HA 2026.8 risolto con generic_thermostat.
 2. (FATTO) Pannello Lovelace Climaoro creato e raggiungibile.
-3. Aggiornare README.md (architettura v2, installazione, test).
-4. Portare la logica di derivazione dal generatore.py dentro
+3. (FATTO) Installer AppDaemon dall'integrazione: init_commands nelle
+   options addon (scrittura climaoro.py + apps.yaml nel mount host
+   reale) + riavvio. App autenticata con SUPERVISOR_TOKEN.
+4. (FATTO) FIX BUG CALENDARIO card 7x24: orientamento trasposto
+   (righe=ore 24 x colonne=giorni 7) in www/climaoro-calendario.js;
+   ridistribuito in config/www/climaoro/ e custom_components/www/
+   (entrambe le copie su VM) + interazione set_calendario verificata.
+5. Aggiornare README.md (architettura v2, installazione, test).
+6. Portare la logica di derivazione dal generatore.py dentro
    l'integrazione (creazione helper automatica dal wizard).
-5. Wizard completo: inserimento entità chiave + pulsante conferma logica
+7. Wizard completo: inserimento entità chiave + pulsante conferma logica
    + creazione automatica entità di contorno (oggi avviene al submit).
-6. Installer AppDaemon dall'integrazione (write apps.yaml + app, reload).
-7. Verificare il comportamento dell'app su periodo eco/autonomo
-   (calendario) e il refresh immediato della config.
-8. Modalità simulazione guidata dall'integrazione (oggi via YAML manuale).
-9. Push su GitHub quando l'utente conferma.
+8. Verificare il comportamento dell'app su periodo eco/autonomo
+   (calendario). (Il refresh immediato della config e' FATTO: evento
+   climaoro_config_updated -> vedi sez. 3 [11/08]).
+9. Modalità simulazione guidata dall'integrazione (oggi via YAML manuale).
+10. Commit + push su GitHub quando l'utente conferma.
 
 =======================================================================

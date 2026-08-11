@@ -29,7 +29,7 @@ from .const import (
     SOGLIA_MIN,
     SOGLIA_STEP,
 )
-from . import get_group, get_rooms
+from . import fire_config_updated, get_group, get_rooms
 
 
 class _BaseNumber(NumberEntity):
@@ -43,6 +43,7 @@ class _BaseNumber(NumberEntity):
     def _update_entry(self, options: dict) -> None:
         self._hass.config_entries.async_update_entry(self._entry, options=options)
         self._entry = self._hass.config_entries.async_entries(DOMAIN)[0]
+        fire_config_updated(self._hass)
 
 
 class SogliaPesi(_BaseNumber, NumberEntity):
