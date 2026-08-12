@@ -29,47 +29,54 @@ def fetch_runtime_config(ha_url: str, token: str) -> dict:
 
 
 def build_dashboard(cfg: dict) -> dict:
-    """Dashboard Lovelace: una vista per appartamento (globale + gruppi)."""
+    """Dashboard Lovelace: 4 viste per appartamento (globale + un gruppo ciascuna)."""
     views = []
     for ap in cfg.get("appartamenti", []):
         nome = ap.get("nome", ap.get("id"))
         ap_id = ap.get("id")
         gen = ap.get("entities", {})
+        is_casa = ap_id == "casa"
+        suffix = "" if is_casa else f" ({nome})"
+        prefix = "" if is_casa else f"{nome} · "
 
-        cards = [
+        views.append(
             {
-                "type": "entities",
-                "title": f"Globale {nome}",
-                "entities": [
-                    {"entity": gen.get("attivo"), "name": "Sistema attivo"},
-                    {"entity": gen.get("soglia_pesi"), "name": "Soglia pesi"},
+                "title": f"Globale{suffix}",
+                "path": "globale" if is_casa else f"{ap_id}_globale",
+                "cards": [
+                    {
+                        "type": "entities",
+                        "title": f"Climaoro - Globale{suffix}",
+                        "entities": [
+                            {"entity": gen.get("attivo"), "name": "Sistema attivo"},
+                            {"entity": gen.get("soglia_pesi"), "name": "Soglia pesi"},
+                        ],
+                    }
                 ],
             }
-        ]
+        )
 
         for gruppo in ap.get("gruppi", []):
             gent = gruppo.get("entities", {})
             label = gruppo.get("label", gruppo.get("id"))
-            cards.append(
+            cards = [
                 {
                     "type": "entities",
-                    "title": f"{nome} · Gruppo {label}",
+                    "title": f"{prefix}Gruppo {label}",
                     "entities": [
                         {"entity": gent.get("delta_comfort"), "name": "Delta comfort"},
                         {"entity": gent.get("delta_eco"), "name": "Delta eco"},
                         {"entity": gent.get("calendario"), "name": "Calendario"},
                     ],
-                }
-            )
-            cards.append(
+                },
                 {
                     "type": "custom:climaoro-calendario",
-                    "title": f"{nome} · Calendario {label}",
+                    "title": f"{prefix}Calendario {label}",
                     "appartamento": ap_id,
                     "gruppo": gruppo.get("id"),
                     "entity": gent.get("calendario"),
-                }
-            )
+                },
+            ]
             for stanza in gruppo.get("stanze", []):
                 ent = stanza.get("entities", {})
                 stanza_entities = [
@@ -83,18 +90,17 @@ def build_dashboard(cfg: dict) -> dict:
                 cards.append(
                     {
                         "type": "entities",
-                        "title": f"{nome} · {label} · {stanza.get('nome')}",
+                        "title": f"{prefix}{label} · {stanza.get('nome')}",
                         "entities": [e for e in stanza_entities if e.get("entity")],
                     }
                 )
-
-        views.append(
-            {
-                "title": nome,
-                "path": ap_id,
-                "cards": cards,
-            }
-        )
+            views.append(
+                {
+                    "title": f"{label}{suffix}",
+                    "path": gruppo.get("id") if is_casa else f"{ap_id}_{gruppo.get('id')}",
+                    "cards": cards,
+                }
+            )
 
     return {"views": views}
 
