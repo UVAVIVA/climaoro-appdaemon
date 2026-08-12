@@ -188,6 +188,17 @@ emergenza individuale).
         0 entità sim residue, entità reali ESPHome intatte (a1/a2 con
         suffisso _2, a5 senza), dashboard 4 viste ok, app riavviata.
         Nota: i file sim_*.yaml restano su disco ma inattivi.
+[12/08] FILE SIM ELIMINATI DALLA VM: rimossi i 5 sim_*.yaml
+        (backup /root/sim_files_backup_20260812_083058.tar.gz).
+[12/08] FIX BLOCKING CALL provision.py: lettura src_app con
+        asyncio.to_thread (riga 149) -> sparito il warning
+        "Detected blocking call ... inside the event loop". VERIFICATO.
+[12/08] RANGE DELTA: delta_comfort 0..1, delta_eco 0..2 (step 0.1),
+        entrambi SOTTRATTI a temp_salvata (guardia = temp_salvata - delta;
+        tetto = temp_salvata). Applicato in const.py (DELTA_COMFORT_MAX/
+        DELTA_ECO_MAX al posto di DELTA_MAX -5..5), number.py (native_max_value
+        per campo) e config_flow.py (slider wizard). VERIFICATO via API:
+        comfort max 1.0, eco max 2.0; valori salvati (0.5/1.0) conservati.
 
 -----------------------------------------------------------------------
 4. PUNTI APERTI / DA DEFINIRE

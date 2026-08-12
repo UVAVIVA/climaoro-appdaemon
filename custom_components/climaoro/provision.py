@@ -13,6 +13,7 @@ Dopo il wizard (o tramite il servizio ``climaoro.provisiona``) l'integrazione:
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import inspect
 import json
@@ -146,7 +147,7 @@ async def async_write_appdaemon_files(
         _LOGGER.error("App sorgente mancante: %s", src_app)
         return False
 
-    app_source = src_app.read_text(encoding="utf-8")
+    app_source = await asyncio.to_thread(src_app.read_text, encoding="utf-8")
     apps_yaml = (
         f"# Generato automaticamente da Climaoro ({TOKEN_NAME}).\n"
         f"climaoro:\n"

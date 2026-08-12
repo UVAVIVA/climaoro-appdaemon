@@ -17,7 +17,8 @@ from .const import (
     CONF_PESO,
     CONF_ROOMS,
     CONF_SOGLIA_PESI,
-    DELTA_MAX,
+    DELTA_COMFORT_MAX,
+    DELTA_ECO_MAX,
     DELTA_MIN,
     DELTA_STEP,
     DOMAIN,
@@ -77,7 +78,6 @@ class DeltaGruppo(_BaseNumber, NumberEntity):
     """Delta comfort/eco di un gruppo."""
 
     _attr_native_min_value = DELTA_MIN
-    _attr_native_max_value = DELTA_MAX
     _attr_native_step = DELTA_STEP
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_mode = NumberMode.SLIDER
@@ -89,6 +89,10 @@ class DeltaGruppo(_BaseNumber, NumberEntity):
         self._campo = campo
         self._attr_unique_id = f"{DOMAIN}_delta_{gruppo}_{campo}"
         self._attr_name = f"Climaoro {GROUP_LABELS[gruppo]} Delta {campo.split('_', 1)[1]}"
+
+    @property
+    def native_max_value(self) -> float:
+        return DELTA_COMFORT_MAX if self._campo == "delta_comfort" else DELTA_ECO_MAX
 
     @property
     def native_value(self) -> float | None:

@@ -37,7 +37,8 @@ from .const import (
     DEFAULT_INCLUSIONE,
     DEFAULT_PESO,
     DEFAULT_SOGLIA_PESI,
-    DELTA_MAX,
+    DELTA_COMFORT_MAX,
+    DELTA_ECO_MAX,
     DELTA_MIN,
     DELTA_STEP,
     DOMAIN,
@@ -488,10 +489,10 @@ class ClimaoroOptionsFlow(config_entries.OptionsFlow):
         schema = {
             vol.Required("_gruppo", default=gruppo): str,
             vol.Required(CONF_DELTA_COMFORT, default=g.get(CONF_DELTA_COMFORT, DEFAULT_DELTA_COMFORT)): _numero(
-                DELTA_MIN, DELTA_MAX, DELTA_STEP
+                DELTA_MIN, DELTA_COMFORT_MAX, DELTA_STEP
             ),
             vol.Required(CONF_DELTA_ECO, default=g.get(CONF_DELTA_ECO, DEFAULT_DELTA_ECO)): _numero(
-                DELTA_MIN, DELTA_MAX, DELTA_STEP
+                DELTA_MIN, DELTA_ECO_MAX, DELTA_STEP
             ),
         }
         return self.async_show_form(

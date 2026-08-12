@@ -72,8 +72,11 @@ DEFAULT_PESO: Final = 1.0
 DEFAULT_INCLUSIONE: Final = True
 
 # Limiti helper.
-DELTA_MIN: Final = -5.0
-DELTA_MAX: Final = 5.0
+# I delta (eco/comfort) si SOTTRAGGONO sempre a temp_salvata per
+# definire la guardia; il tetto di riscaldamento resta temp_salvata.
+DELTA_MIN: Final = 0.0
+DELTA_COMFORT_MAX: Final = 1.0
+DELTA_ECO_MAX: Final = 2.0
 DELTA_STEP: Final = 0.1
 SOGLIA_MIN: Final = 0.0
 SOGLIA_MAX: Final = 20.0
