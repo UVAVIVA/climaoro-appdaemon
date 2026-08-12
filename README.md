@@ -31,22 +31,27 @@ PERCORSO.txt                  Sintesi del progetto (leggere per primo)
 
 ### Modello
 
-- **Stanze** (2-8): nome, gruppo di appartenenza, **peso** e
-  **inclusione** (le uniche cose individuali) + le 4 entità chiave del
-  termostato:
+- **Stanze**: nome, **appartamento** di appartenenza, gruppo di
+  appartenenza, **peso** e **inclusione** (le uniche cose individuali) +
+  le 4 entità chiave del termostato:
   - `climate.<dev>_climatizzazione`
   - `number.<dev>_temperatura_salvata`
   - `switch.<dev>_modalita_centralizzata`
   - `button.<dev>_rinnovo_modalita_centralizzata`
-- **Gruppi** fissi GIORNO / NOTTE / SERVIZI (opzionali). Ognuno ha:
+  (non c'è un limite fisso al numero di stanze, serve almeno una stanza)
+- **Gruppi** fissi GIORNO / NOTTE / SERVIZI (opzionali). Ogni gruppo di
+  ogni appartamento ha:
   - 2 **delta** (comfort, eco)
   - un **calendario 7x24** con tendina `eco` / `comfort` / `autonomo`
     (autonomo = i termostati del gruppo tornano al firmware)
-  - `number.climaoro_<gruppo>_delta_comfort` / `_delta_eco`
-  - `sensor.climaoro_<gruppo>_calendario`
+  - per la Casa: `number.climaoro_<gruppo>_delta_comfort` / `_delta_eco`
+    e `sensor.climaoro_<gruppo>_calendario`
+  - per il secondo appartamento: `number.climaoro_appartamento_<gruppo>_delta_*`
+    e `sensor.climaoro_appartamento_<gruppo>_calendario`
 - **Appartamenti**: l'integrazione gestisce 2 unità indipendenti
   (Casa + Appartamento). Ogni appartamento ha il proprio **Globale**
-  (`switch.climaoro_<app>_attivo` master + `number.climaoro_<app>_soglia_pesi`)
+  (master `switch.climaoro_attivo` / `switch.climaoro_appartamento_attivo`
+  + `number.climaoro_soglia_pesi` / `number.climaoro_appartamento_soglia_pesi`)
   e **proprie copie** dei gruppi (calendari/delta). La Casa conserva i
   unique_id storici (`climaoro_attivo`, `climaoro_soglia_pesi`); il secondo
   appartamento usa il prefisso `climaoro_appartamento_`. Ogni stanza
