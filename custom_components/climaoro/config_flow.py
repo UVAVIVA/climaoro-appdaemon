@@ -13,13 +13,18 @@ import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 
 from .const import (
+    APPARTAMENTO_CASA,
+    APPARTAMENTI_DEFAULT,
     CALENDAR_VALUES,
+    CONF_APPARTAMENTI,
+    CONF_APPARTAMENTO,
     CONF_ATTIVO,
     CONF_CLIMA,
     CONF_CLIMA_UID,
     CONF_DELTA_COMFORT,
     CONF_DELTA_ECO,
     CONF_GRUPPO,
+    CONF_ID,
     CONF_INCLUSIONE,
     CONF_MODALITA,
     CONF_MODALITA_UID,
@@ -50,7 +55,8 @@ from .const import (
     SOGLIA_MAX,
     SOGLIA_MIN,
     SOGLIA_STEP,
-    default_groups,
+    default_appartamenti,
+    migrate_options,
 )
 
 GROUP_OPTIONS = [{"value": g, "label": GROUP_LABELS[g]} for g in GROUPS]
@@ -83,6 +89,32 @@ def _gruppo_selector():
     )
 
 
+def _appartamento_selector(options: dict, appartamenti: list[dict] | None = None):
+    """Selettore appartamento (dai dati oppure da una lista esplicita)."""
+    apps = (
+        appartamenti
+        if appartamenti is not None
+        else options.get(CONF_APPARTAMENTI, [])
+    )
+    opt = [
+        {"value": ap.get(CONF_ID), "label": ap.get(CONF_NOME, ap.get(CONF_ID))}
+        for ap in apps
+    ]
+    return selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=opt,
+            mode=selector.SelectSelectorMode.DROPDOWN,
+        )
+    )
+
+
+def _nome_app(app_id: str) -> str:
+    for a in APPARTAMENTI_DEFAULT:
+        if a.get(CONF_ID) == app_id:
+            return a.get(CONF_NOME, app_id)
+    return app_id
+
+
 async def _resolve_entity_uids(
     hass: HomeAssistant, selezioni: dict[str, str]
 ) -> dict[str, str | None]:
@@ -98,13 +130,14 @@ async def _resolve_entity_uids(
 class ClimaoroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Wizard di configurazione Climaoro."""
 
-    VERSION = 1
+    VERSION = 2
 
     def __init__(self) -> None:
         """Init."""
         self._gruppi: list[str] = []
         self._rooms: list[dict[str, Any]] = []
         self._edit_room_id: str | None = None
+        self._edit_app_id: str | None = None
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
         """Step 1: scelta dei gruppi da usare."""
@@ -158,7 +191,8 @@ class ClimaoroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if not self._rooms:
             return "Nessuna stanza aggiunta finora."
         righe = [
-            f"- {r[CONF_NOME]} -> {GROUP_LABELS[r[CONF_GRUPPO]]} (peso {r.get(CONF_PESO, DEFAULT_PESO)}, "
+            f"- {r[CONF_NOME]} -> {_nome_app(r.get(CONF_APPARTAMENTO, APPARTAMENTO_CASA))} / "
+            f"{GROUP_LABELS[r[CONF_GRUPPO]]} (peso {r.get(CONF_PESO, DEFAULT_PESO)}, "
             f"inclusa: {'si' if r.get(CONF_INCLUSIONE, True) else 'no'})"
             for r in self._rooms
         ]
@@ -174,7 +208,12 @@ class ClimaoroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required("room_id"): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=[
-                        {"value": r["id"], "label": f"{r[CONF_NOME]} ({GROUP_LABELS[r[CONF_GRUPPO]]})"}
+                        {
+                            "value": r["id"],
+                            "label": f"{r[CONF_NOME]} "
+                            f"({_nome_app(r.get(CONF_APPARTAMENTO, APPARTAMENTO_CASA))} / "
+                            f"{GROUP_LABELS[r[CONF_GRUPPO]]})",
+                        }
                         for r in self._rooms
                     ],
                     mode=selector.SelectSelectorMode.DROPDOWN,
@@ -184,13 +223,14 @@ class ClimaoroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="manage_room", data_schema=vol.Schema(schema))
 
     async def async_step_edit_room(self, user_input: dict[str, Any] | None = None):
-        """Modifica gruppo/peso/inclusione di una stanza."""
+        """Modifica appartamento/gruppo/peso/inclusione di una stanza."""
         room_id = self._edit_room_id
         room = next((r for r in self._rooms if r["id"] == room_id), None)
         if room is None:
             return await self.async_step_rooms()
 
         if user_input is not None:
+            room[CONF_APPARTAMENTO] = user_input[CONF_APPARTAMENTO]
             room[CONF_GRUPPO] = user_input[CONF_GRUPPO]
             room[CONF_PESO] = user_input[CONF_PESO]
             room[CONF_INCLUSIONE] = user_input[CONF_INCLUSIONE]
@@ -198,6 +238,10 @@ class ClimaoroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_rooms()
 
         schema = {
+            vol.Required(
+                CONF_APPARTAMENTO,
+                default=room.get(CONF_APPARTAMENTO, APPARTAMENTO_CASA),
+            ): _appartamento_selector({}, APPARTAMENTI_DEFAULT),
             vol.Required(CONF_GRUPPO, default=room.get(CONF_GRUPPO)): _gruppo_selector(),
             vol.Required(CONF_PESO, default=room.get(CONF_PESO, DEFAULT_PESO)): _numero(
                 PESO_MIN, PESO_MAX, PESO_STEP
@@ -235,6 +279,9 @@ class ClimaoroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     {
                         "id": _slug(nome),
                         CONF_NOME: nome,
+                        CONF_APPARTAMENTO: user_input.get(
+                            CONF_APPARTAMENTO, APPARTAMENTO_CASA
+                        ),
                         CONF_GRUPPO: user_input[CONF_GRUPPO],
                         CONF_CLIMA: user_input[CONF_CLIMA],
                         CONF_TEMP_SALVATA: user_input[CONF_TEMP_SALVATA],
@@ -252,6 +299,9 @@ class ClimaoroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         schema = {
             vol.Required(CONF_NOME): str,
+            vol.Required(
+                CONF_APPARTAMENTO, default=APPARTAMENTO_CASA
+            ): _appartamento_selector({}, APPARTAMENTI_DEFAULT),
             vol.Required(CONF_GRUPPO): _gruppo_selector(),
             vol.Required(CONF_CLIMA): _entity_selector(["climate"]),
             vol.Required(CONF_TEMP_SALVATA): _entity_selector(["number"]),
@@ -268,18 +318,35 @@ class ClimaoroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_global(self, user_input: dict[str, Any] | None = None):
-        """Parametri globali (attivo + soglia pesi)."""
+        """Scegli l'appartamento di cui impostare attivo + soglia pesi."""
+        if user_input is not None:
+            self._edit_app_id = user_input[CONF_APPARTAMENTO]
+            return await self.async_step_edit_global()
+
+        schema = {
+            vol.Required(CONF_APPARTAMENTO): _appartamento_selector(
+                {}, APPARTAMENTI_DEFAULT
+            )
+        }
+        return self.async_show_form(step_id="global", data_schema=vol.Schema(schema))
+
+    async def async_step_edit_global(self, user_input: dict[str, Any] | None = None):
+        """Attivo + soglia pesi dell'appartamento selezionato."""
         if user_input is not None:
             if not self._rooms:
                 return self.async_abort(reason="nessuna_stanza")
             data = {
                 "data": {
-                    CONF_ATTIVO: user_input.get(CONF_ATTIVO, DEFAULT_ATTIVO),
-                    CONF_SOGLIA_PESI: user_input.get(CONF_SOGLIA_PESI, DEFAULT_SOGLIA_PESI),
-                    "groups": default_groups(self._gruppi),
+                    CONF_APPARTAMENTI: default_appartamenti(self._gruppi),
                     CONF_ROOMS: self._rooms,
                 }
             }
+            for ap in data["data"][CONF_APPARTAMENTI]:
+                if ap.get(CONF_ID) == self._edit_app_id:
+                    ap[CONF_ATTIVO] = user_input.get(CONF_ATTIVO, DEFAULT_ATTIVO)
+                    ap[CONF_SOGLIA_PESI] = user_input.get(
+                        CONF_SOGLIA_PESI, DEFAULT_SOGLIA_PESI
+                    )
             return self.async_create_entry(title="Climaoro", data=data)
 
         schema = {
@@ -288,19 +355,38 @@ class ClimaoroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 SOGLIA_MIN, SOGLIA_MAX, SOGLIA_STEP
             ),
         }
-        return self.async_show_form(step_id="global", data_schema=vol.Schema(schema))
+        return self.async_show_form(
+            step_id="edit_global",
+            data_schema=vol.Schema(schema),
+            description_placeholders={"nome": _nome_app(self._edit_app_id)},
+        )
 
 
 class ClimaoroOptionsFlow(config_entries.OptionsFlow):
-    """Opzioni: spostare stanze, modificare delta e parametri globali."""
+    """Opzioni: stanze, delta dei gruppi e parametri globali per appartamento."""
 
-    VERSION = 1
+    VERSION = 2
 
     def __init__(self, entry: config_entries.ConfigEntry) -> None:
         """Init."""
         self._entry = entry
-        self._data = dict(entry.options)
+        self._data = migrate_options(dict(entry.options))
         self._edit_room_id: str | None = None
+        self._app_id: str | None = None
+        self._target: str | None = None
+
+    def _ap(self) -> dict[str, Any] | None:
+        for ap in self._data.get(CONF_APPARTAMENTI, []):
+            if ap.get(CONF_ID) == self._app_id:
+                return ap
+        return None
+
+    def _save_ap(self, ap: dict[str, Any]) -> None:
+        appartamenti = self._data.get(CONF_APPARTAMENTI, [])
+        for i, x in enumerate(appartamenti):
+            if x.get(CONF_ID) == ap.get(CONF_ID):
+                appartamenti[i] = ap
+        self._data[CONF_APPARTAMENTI] = appartamenti
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         """Menu principale opzioni."""
@@ -309,9 +395,11 @@ class ClimaoroOptionsFlow(config_entries.OptionsFlow):
             if scelta == "stanze":
                 return await self.async_step_rooms()
             if scelta == "gruppi":
-                return await self.async_step_select_group()
-            if scelta == "globale":
-                return await self.async_step_global()
+                self._target = "gruppi"
+                return await self.async_step_select_apartment()
+            if scelta == "globali":
+                self._target = "globali"
+                return await self.async_step_select_apartment()
             return self.async_create_entry(title="", data=self._data)
 
         schema = {
@@ -320,7 +408,7 @@ class ClimaoroOptionsFlow(config_entries.OptionsFlow):
                     options=[
                         {"value": "stanze", "label": "Gestisci le stanze (aggiungi, sposta, peso, inclusione)"},
                         {"value": "gruppi", "label": "Delta dei gruppi (comfort / eco)"},
-                        {"value": "globale", "label": "Parametri globali (attivo, soglia pesi)"},
+                        {"value": "globali", "label": "Parametri globali per appartamento (attivo, soglia pesi)"},
                         {"value": "fine", "label": "Salva e chiudi"},
                     ],
                     mode=selector.SelectSelectorMode.LIST,
@@ -328,6 +416,21 @@ class ClimaoroOptionsFlow(config_entries.OptionsFlow):
             )
         }
         return self.async_show_form(step_id="init", data_schema=vol.Schema(schema))
+
+    async def async_step_select_apartment(self, user_input: dict[str, Any] | None = None):
+        """Scegli l'appartamento (per gruppi o parametri globali)."""
+        if user_input is not None:
+            self._app_id = user_input[CONF_APPARTAMENTO]
+            if self._target == "gruppi":
+                return await self.async_step_select_group()
+            return await self.async_step_edit_global()
+
+        schema = {
+            vol.Required(CONF_APPARTAMENTO): _appartamento_selector(self._data)
+        }
+        return self.async_show_form(
+            step_id="select_apartment", data_schema=vol.Schema(schema)
+        )
 
     async def async_step_rooms(self, user_input: dict[str, Any] | None = None):
         """Menu stanze nelle opzioni."""
@@ -376,6 +479,9 @@ class ClimaoroOptionsFlow(config_entries.OptionsFlow):
                     {
                         "id": _slug(nome),
                         CONF_NOME: nome,
+                        CONF_APPARTAMENTO: user_input.get(
+                            CONF_APPARTAMENTO, APPARTAMENTO_CASA
+                        ),
                         CONF_GRUPPO: user_input[CONF_GRUPPO],
                         CONF_CLIMA: user_input[CONF_CLIMA],
                         CONF_TEMP_SALVATA: user_input[CONF_TEMP_SALVATA],
@@ -394,6 +500,9 @@ class ClimaoroOptionsFlow(config_entries.OptionsFlow):
 
         schema = {
             vol.Required(CONF_NOME): str,
+            vol.Required(
+                CONF_APPARTAMENTO, default=APPARTAMENTO_CASA
+            ): _appartamento_selector(self._data),
             vol.Required(CONF_GRUPPO): _gruppo_selector(),
             vol.Required(CONF_CLIMA): _entity_selector(["climate"]),
             vol.Required(CONF_TEMP_SALVATA): _entity_selector(["number"]),
@@ -415,7 +524,12 @@ class ClimaoroOptionsFlow(config_entries.OptionsFlow):
             vol.Required("room_id"): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=[
-                        {"value": r["id"], "label": f"{r[CONF_NOME]} ({GROUP_LABELS[r[CONF_GRUPPO]]})"}
+                        {
+                            "value": r["id"],
+                            "label": f"{r[CONF_NOME]} "
+                            f"({_nome_app(r.get(CONF_APPARTAMENTO, APPARTAMENTO_CASA))} / "
+                            f"{GROUP_LABELS[r[CONF_GRUPPO]]})",
+                        }
                         for r in rooms
                     ],
                     mode=selector.SelectSelectorMode.DROPDOWN,
@@ -425,13 +539,14 @@ class ClimaoroOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(step_id="manage_room", data_schema=vol.Schema(schema))
 
     async def async_step_edit_room(self, user_input: dict[str, Any] | None = None):
-        """Sposta stanza / modifica peso e inclusione."""
+        """Sposta stanza tra appartamenti/gruppi / modifica peso e inclusione."""
         rooms = self._data.get(CONF_ROOMS, [])
         room = next((r for r in rooms if r["id"] == self._edit_room_id), None)
         if room is None:
             return await self.async_step_rooms()
 
         if user_input is not None:
+            room[CONF_APPARTAMENTO] = user_input[CONF_APPARTAMENTO]
             room[CONF_GRUPPO] = user_input[CONF_GRUPPO]
             room[CONF_PESO] = user_input[CONF_PESO]
             room[CONF_INCLUSIONE] = user_input[CONF_INCLUSIONE]
@@ -440,6 +555,10 @@ class ClimaoroOptionsFlow(config_entries.OptionsFlow):
             return await self.async_step_rooms()
 
         schema = {
+            vol.Required(
+                CONF_APPARTAMENTO,
+                default=room.get(CONF_APPARTAMENTO, APPARTAMENTO_CASA),
+            ): _appartamento_selector(self._data),
             vol.Required(CONF_GRUPPO, default=room.get(CONF_GRUPPO)): _gruppo_selector(),
             vol.Required(CONF_PESO, default=room.get(CONF_PESO, DEFAULT_PESO)): _numero(
                 PESO_MIN, PESO_MAX, PESO_STEP
@@ -453,8 +572,11 @@ class ClimaoroOptionsFlow(config_entries.OptionsFlow):
         )
 
     async def async_step_select_group(self, user_input: dict[str, Any] | None = None):
-        """Selezione gruppo da modificare."""
-        groups = self._data.get("groups", {})
+        """Selezione gruppo da modificare (nell'appartamento scelto)."""
+        ap = self._ap()
+        if ap is None:
+            return self.async_abort(reason="nessun_appartamento")
+        groups = ap.get(CONF_GROUPS, {})
         if user_input is not None:
             gruppo = user_input["gruppo"]
             return await self.async_step_edit_group(gruppo=gruppo)
@@ -475,14 +597,18 @@ class ClimaoroOptionsFlow(config_entries.OptionsFlow):
     async def async_step_edit_group(
         self, user_input: dict[str, Any] | None = None, gruppo: str | None = None
     ):
-        """Modifica delta di un gruppo."""
-        groups = self._data.get("groups", {})
+        """Modifica delta di un gruppo di un appartamento."""
+        ap = self._ap()
+        if ap is None:
+            return self.async_abort(reason="nessun_appartamento")
+        groups = ap.get(CONF_GROUPS, {})
         if user_input is not None:
-            g = groups.get(user_input["_gruppo"], {})
+            g = dict(groups.get(user_input["_gruppo"], {}))
             g[CONF_DELTA_COMFORT] = user_input[CONF_DELTA_COMFORT]
             g[CONF_DELTA_ECO] = user_input[CONF_DELTA_ECO]
             groups[user_input["_gruppo"]] = g
-            self._data["groups"] = groups
+            ap[CONF_GROUPS] = groups
+            self._save_ap(ap)
             return await self.async_step_init()
 
         g = groups.get(gruppo, {})
@@ -498,23 +624,35 @@ class ClimaoroOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="edit_group",
             data_schema=vol.Schema(schema),
-            description_placeholders={"gruppo": GROUP_LABELS.get(gruppo, gruppo)},
+            description_placeholders={
+                "gruppo": GROUP_LABELS.get(gruppo, gruppo),
+                "nome": ap.get(CONF_NOME, self._app_id),
+            },
         )
 
-    async def async_step_global(self, user_input: dict[str, Any] | None = None):
-        """Modifica parametri globali."""
+    async def async_step_edit_global(self, user_input: dict[str, Any] | None = None):
+        """Modifica parametri globali di un appartamento."""
+        ap = self._ap()
+        if ap is None:
+            return self.async_abort(reason="nessun_appartamento")
+
         if user_input is not None:
-            self._data[CONF_ATTIVO] = user_input[CONF_ATTIVO]
-            self._data[CONF_SOGLIA_PESI] = user_input[CONF_SOGLIA_PESI]
+            ap[CONF_ATTIVO] = user_input[CONF_ATTIVO]
+            ap[CONF_SOGLIA_PESI] = user_input[CONF_SOGLIA_PESI]
+            self._save_ap(ap)
             return await self.async_step_init()
 
         schema = {
-            vol.Required(CONF_ATTIVO, default=self._data.get(CONF_ATTIVO, DEFAULT_ATTIVO)): selector.BooleanSelector(),
-            vol.Required(CONF_SOGLIA_PESI, default=self._data.get(CONF_SOGLIA_PESI, DEFAULT_SOGLIA_PESI)): _numero(
+            vol.Required(CONF_ATTIVO, default=ap.get(CONF_ATTIVO, DEFAULT_ATTIVO)): selector.BooleanSelector(),
+            vol.Required(CONF_SOGLIA_PESI, default=ap.get(CONF_SOGLIA_PESI, DEFAULT_SOGLIA_PESI)): _numero(
                 SOGLIA_MIN, SOGLIA_MAX, SOGLIA_STEP
             ),
         }
-        return self.async_show_form(step_id="global", data_schema=vol.Schema(schema))
+        return self.async_show_form(
+            step_id="edit_global",
+            data_schema=vol.Schema(schema),
+            description_placeholders={"nome": ap.get(CONF_NOME, self._app_id)},
+        )
 
 
 @callback

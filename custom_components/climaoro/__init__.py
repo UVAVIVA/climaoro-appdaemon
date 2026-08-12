@@ -15,6 +15,9 @@ from homeassistant.helpers import entity_registry as er
 import voluptuous as vol
 
 from .const import (
+    APPARTAMENTO_CASA,
+    CONF_APPARTAMENTI,
+    CONF_APPARTAMENTO,
     CONF_ATTIVO,
     CONF_CALENDAR,
     CONF_CLIMA,
@@ -23,6 +26,7 @@ from .const import (
     CONF_DELTA_ECO,
     CONF_GROUPS,
     CONF_GRUPPO,
+    CONF_ID,
     CONF_INCLUSIONE,
     CONF_MODALITA,
     CONF_MODALITA_UID,
@@ -42,7 +46,8 @@ from .const import (
     VALUE_COMFORT,
     VALUE_ECO,
     default_calendar,
-    default_groups,
+    entity_uid,
+    migrate_options,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -51,11 +56,11 @@ PLATFORMS: list[Platform] = [Platform.NUMBER, Platform.SWITCH, Platform.SENSOR]
 
 
 def get_data(hass: HomeAssistant) -> dict[str, Any]:
-    """Dati di configurazione (global/groups/rooms)."""
+    """Dati di configurazione (appartamenti + stanze), forma migrata."""
     entry = _get_entry(hass)
     if entry is None:
         return {}
-    return entry.data.get("data") or entry.options
+    return migrate_options(entry.data.get("data") or entry.options)
 
 
 def _get_entry(hass: HomeAssistant) -> ConfigEntry | None:
@@ -71,9 +76,25 @@ def fire_config_updated(hass: HomeAssistant) -> None:
     hass.bus.fire(EVENT_CONFIG_UPDATED)
 
 
-def get_group(hass: HomeAssistant, gruppo: str) -> dict[str, Any] | None:
-    """Configurazione di un gruppo (delta + calendario)."""
-    return get_data(hass).get(CONF_GROUPS, {}).get(gruppo)
+def get_appartamenti(hass: HomeAssistant) -> list[dict[str, Any]]:
+    """Lista degli appartamenti configurati."""
+    return list(get_data(hass).get(CONF_APPARTAMENTI, []))
+
+
+def get_apartment(hass: HomeAssistant, app_id: str) -> dict[str, Any] | None:
+    """Appartamento per id."""
+    for ap in get_appartamenti(hass):
+        if ap.get(CONF_ID) == app_id:
+            return ap
+    return None
+
+
+def get_group(hass: HomeAssistant, app_id: str, gruppo: str) -> dict[str, Any] | None:
+    """Configurazione di un gruppo (delta + calendario) di un appartamento."""
+    ap = get_apartment(hass, app_id)
+    if ap is None:
+        return None
+    return ap.get(CONF_GROUPS, {}).get(gruppo)
 
 
 def get_rooms(hass: HomeAssistant) -> list[dict[str, Any]]:
@@ -95,10 +116,13 @@ async def build_runtime_config(hass: HomeAssistant) -> dict[str, Any]:
     App Daemon e pannello frontend usano SOLO questo: nessun entity_id
     hardcoded. Se l'utente rinomina un'entita' nella UI, il registry
     restituisce l'entity_id aggiornato.
+
+    Formato: {"appartamenti": [{"id", "nome", "attivo", "soglia_pesi",
+    "entities", "gruppi": [...]}], "entities": {unique_id: entity_id}}.
     """
     entry = _get_entry(hass)
     if entry is None:
-        return {"global": {}, "gruppi": [], "entities": {}}
+        return {"appartamenti": [], "entities": {}}
 
     data = get_data(hass)
     reg: er.EntityRegistry = er.async_get(hass)
@@ -119,58 +143,74 @@ async def build_runtime_config(hass: HomeAssistant) -> dict[str, Any]:
                     return e.entity_id
         return entity_id
 
-    global_info = {
-        CONF_ATTIVO: bool(data.get(CONF_ATTIVO)),
-        CONF_SOGLIA_PESI: data.get(CONF_SOGLIA_PESI),
-        "entities": {
-            CONF_ATTIVO: eid(f"{DOMAIN}_attivo"),
-            CONF_SOGLIA_PESI: eid(f"{DOMAIN}_soglia_pesi"),
-        },
-    }
+    def room_ap(r: dict[str, Any]) -> str:
+        return r.get(CONF_APPARTAMENTO, APPARTAMENTO_CASA)
 
     rooms = list(data.get(CONF_ROOMS, []))
-    gruppi_info: list[dict[str, Any]] = []
-    for gruppo, group in data.get(CONF_GROUPS, {}).items():
-        stanze = [
+    appartamenti: list[dict[str, Any]] = []
+    for ap in data.get(CONF_APPARTAMENTI, []):
+        ap_id = ap.get(CONF_ID, APPARTAMENTO_CASA)
+        ap_nome = ap.get(CONF_NOME, ap_id)
+
+        global_info = {
+            CONF_ATTIVO: bool(ap.get(CONF_ATTIVO)),
+            CONF_SOGLIA_PESI: ap.get(CONF_SOGLIA_PESI),
+            "entities": {
+                CONF_ATTIVO: eid(entity_uid(ap_id, CONF_ATTIVO)),
+                CONF_SOGLIA_PESI: eid(entity_uid(ap_id, CONF_SOGLIA_PESI)),
+            },
+        }
+
+        gruppi_info: list[dict[str, Any]] = []
+        for gruppo, group in ap.get(CONF_GROUPS, {}).items():
+            stanze = [
+                {
+                    "id": r.get("id"),
+                    CONF_NOME: r.get(CONF_NOME),
+                    CONF_GRUPPO: r.get(CONF_GRUPPO),
+                    CONF_PESO: r.get(CONF_PESO),
+                    CONF_INCLUSIONE: bool(r.get(CONF_INCLUSIONE, True)),
+                    "entities": {
+                        CONF_CLIMA: resolve_user(r.get(CONF_CLIMA), r.get(CONF_CLIMA_UID)),
+                        CONF_TEMP_SALVATA: resolve_user(
+                            r.get(CONF_TEMP_SALVATA), r.get(CONF_TEMP_SALVATA_UID)
+                        ),
+                        CONF_MODALITA: resolve_user(r.get(CONF_MODALITA), r.get(CONF_MODALITA_UID)),
+                        CONF_RINNOVO: resolve_user(r.get(CONF_RINNOVO), r.get(CONF_RINNOVO_UID)),
+                        CONF_PESO: eid(entity_uid(ap_id, CONF_PESO, r.get("id"))),
+                        CONF_INCLUSIONE: eid(entity_uid(ap_id, CONF_INCLUSIONE, r.get("id"))),
+                    },
+                }
+                for r in rooms
+                if r.get(CONF_GRUPPO) == gruppo and room_ap(r) == ap_id
+            ]
+            gruppi_info.append(
+                {
+                    "id": gruppo,
+                    "label": GROUP_LABELS.get(gruppo, gruppo),
+                    CONF_DELTA_COMFORT: group.get(CONF_DELTA_COMFORT),
+                    CONF_DELTA_ECO: group.get(CONF_DELTA_ECO),
+                    CONF_CALENDAR: group.get(CONF_CALENDAR),
+                    "entities": {
+                        CONF_DELTA_COMFORT: eid(entity_uid(ap_id, "delta", gruppo, CONF_DELTA_COMFORT)),
+                        CONF_DELTA_ECO: eid(entity_uid(ap_id, "delta", gruppo, CONF_DELTA_ECO)),
+                        "calendario": eid(entity_uid(ap_id, "calendario", gruppo)),
+                    },
+                    "stanze": stanze,
+                }
+            )
+
+        appartamenti.append(
             {
-                "id": r.get("id"),
-                CONF_NOME: r.get(CONF_NOME),
-                CONF_GRUPPO: r.get(CONF_GRUPPO),
-                CONF_PESO: r.get(CONF_PESO),
-                CONF_INCLUSIONE: bool(r.get(CONF_INCLUSIONE, True)),
-                "entities": {
-                    CONF_CLIMA: resolve_user(r.get(CONF_CLIMA), r.get(CONF_CLIMA_UID)),
-                    CONF_TEMP_SALVATA: resolve_user(
-                        r.get(CONF_TEMP_SALVATA), r.get(CONF_TEMP_SALVATA_UID)
-                    ),
-                    CONF_MODALITA: resolve_user(r.get(CONF_MODALITA), r.get(CONF_MODALITA_UID)),
-                    CONF_RINNOVO: resolve_user(r.get(CONF_RINNOVO), r.get(CONF_RINNOVO_UID)),
-                    CONF_PESO: eid(f"{DOMAIN}_peso_{r.get('id')}"),
-                    CONF_INCLUSIONE: eid(f"{DOMAIN}_inclusione_{r.get('id')}"),
-                },
-            }
-            for r in rooms
-            if r.get(CONF_GRUPPO) == gruppo
-        ]
-        gruppi_info.append(
-            {
-                "id": gruppo,
-                "label": GROUP_LABELS.get(gruppo, gruppo),
-                CONF_DELTA_COMFORT: group.get(CONF_DELTA_COMFORT),
-                CONF_DELTA_ECO: group.get(CONF_DELTA_ECO),
-                CONF_CALENDAR: group.get(CONF_CALENDAR),
-                "entities": {
-                    CONF_DELTA_COMFORT: eid(f"{DOMAIN}_delta_{gruppo}_{CONF_DELTA_COMFORT}"),
-                    CONF_DELTA_ECO: eid(f"{DOMAIN}_delta_{gruppo}_{CONF_DELTA_ECO}"),
-                    "calendario": eid(f"{DOMAIN}_calendario_{gruppo}"),
-                },
-                "stanze": stanze,
+                "id": ap_id,
+                "nome": ap_nome,
+                **global_info,
+                "gruppi": gruppi_info,
             }
         )
 
     return {
-        "global": global_info,
-        "gruppi": gruppi_info,
+        "appartamenti": appartamenti,
         "entities": eid_by_uid,
     }
 
@@ -220,12 +260,29 @@ def _copy_www(hass: HomeAssistant) -> None:
         dest.write_bytes(src.read_bytes())
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migra la config entry dal formato v1 (globale unico) a v2 (appartamenti)."""
+    if entry.version > 2:
+        return False
+    if entry.version == 1:
+        raw = entry.data.get("data") or dict(entry.options)
+        migrated = migrate_options(dict(raw))
+        hass.config_entries.async_update_entry(
+            entry, data={}, options=migrated, version=2
+        )
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Configura l'integrazione da una config entry."""
     if entry.data.get("data"):
         hass.config_entries.async_update_entry(
             entry, data={}, options=entry.data["data"]
         )
+
+    migrated = migrate_options(dict(entry.options))
+    if migrated != dict(entry.options):
+        hass.config_entries.async_update_entry(entry, options=migrated)
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {"entry": entry}
     _register_services(hass)
@@ -256,15 +313,25 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 def async_update_group_calendar(
-    hass: HomeAssistant, entry: ConfigEntry, gruppo: str, calendario: dict[str, list[str]]
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    app_id: str,
+    gruppo: str,
+    calendario: dict[str, list[str]],
 ) -> None:
-    """Salva il calendario di un gruppo nella config entry (senza reload)."""
+    """Salva il calendario di un gruppo (di un appartamento) nella config entry."""
     options = dict(entry.options)
-    groups = dict(options.get(CONF_GROUPS, {}))
-    group = dict(groups.get(gruppo, {}))
-    group[CONF_CALENDAR] = calendario
-    groups[gruppo] = group
-    options[CONF_GROUPS] = groups
+    appartamenti = list(options.get(CONF_APPARTAMENTI, []))
+    for ap in appartamenti:
+        if ap.get(CONF_ID) != app_id:
+            continue
+        groups = dict(ap.get(CONF_GROUPS, {}))
+        group = dict(groups.get(gruppo, {}))
+        group[CONF_CALENDAR] = calendario
+        groups[gruppo] = group
+        ap[CONF_GROUPS] = groups
+        break
+    options[CONF_APPARTAMENTI] = appartamenti
     hass.config_entries.async_update_entry(entry, options=options)
     fire_config_updated(hass)
 
@@ -273,21 +340,24 @@ def _register_services(hass: HomeAssistant) -> None:
     """Registra i servizi dell'integrazione."""
 
     async def set_calendario(call: ServiceCall) -> None:
-        """Imposta una cella del calendario di un gruppo.
+        """Imposta una cella del calendario di un gruppo (di un appartamento).
 
-        Parametri: gruppo, giorno, ora, valore.
+        Parametri: appartamento, gruppo, giorno, ora, valore.
         """
         entry = _get_entry(hass)
         if entry is None:
             return
+        app_id = call.data.get("appartamento", APPARTAMENTO_CASA)
         gruppo = call.data["gruppo"]
         giorno = call.data["giorno"]
         ora = int(call.data["ora"])
         valore = call.data["valore"]
 
-        group = get_group(hass, gruppo)
+        group = get_group(hass, app_id, gruppo)
         if group is None:
-            _LOGGER.error("Gruppo '%s' non configurato", gruppo)
+            _LOGGER.error(
+                "Appartamento '%s' / gruppo '%s' non configurato", app_id, gruppo
+            )
             return
 
         calendario = dict(group.get(CONF_CALENDAR, default_calendar(gruppo)))
@@ -296,10 +366,10 @@ def _register_services(hass: HomeAssistant) -> None:
             ore[ora] = valore
         calendario[giorno] = ore
 
-        async_update_group_calendar(hass, entry, gruppo, calendario)
+        async_update_group_calendar(hass, entry, app_id, gruppo, calendario)
 
         sensors = hass.data.get(DOMAIN, {}).get("sensors", {})
-        sensor = sensors.get(gruppo)
+        sensor = sensors.get((app_id, gruppo))
         if sensor is not None:
             sensor.async_write_ha_state()
 
@@ -309,6 +379,7 @@ def _register_services(hass: HomeAssistant) -> None:
         set_calendario,
         schema=vol.Schema(
             {
+                vol.Optional("appartamento", default=APPARTAMENTO_CASA): str,
                 vol.Required("gruppo"): vol.In(GROUPS),
                 vol.Required("giorno"): str,
                 vol.Required("ora"): int,

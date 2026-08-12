@@ -22,6 +22,7 @@
         "description": "Inserisci le entita' della stanza (come nelle automazioni).\n\n{riepilogo}",
         "data": {
           "nome": "Nome stanza",
+          "appartamento": "Appartamento",
           "gruppo": "Gruppo",
           "clima": "Termostato (climatizzazione)",
           "temp_salvata": "Temperatura salvata",
@@ -40,8 +41,9 @@
       },
       "edit_room": {
         "title": "Modifica {nome}",
-        "description": "Sposta la stanza in un altro gruppo o cambia peso e inclusione.",
+        "description": "Sposta la stanza in un altro appartamento o gruppo, o cambia peso e inclusione.",
         "data": {
+          "appartamento": "Appartamento",
           "gruppo": "Gruppo",
           "peso": "Peso",
           "inclusione": "Inclusa"
@@ -49,7 +51,14 @@
       },
       "global": {
         "title": "Parametri globali",
-        "description": "Master e soglia pesi.",
+        "description": "Scegli l'appartamento di cui impostare master e soglia pesi.",
+        "data": {
+          "appartamento": "Appartamento"
+        }
+      },
+      "edit_global": {
+        "title": "Parametri globali {nome}",
+        "description": "Master e soglia pesi dell'appartamento.",
         "data": {
           "attivo": "Attivo",
           "soglia_pesi": "Soglia pesi"
@@ -63,7 +72,8 @@
       "nessuna_stanza": "Aggiungi almeno una stanza prima di continuare."
     },
     "abort": {
-      "nessuna_stanza": "Nessuna stanza configurata."
+      "nessuna_stanza": "Nessuna stanza configurata.",
+      "nessun_appartamento": "Nessun appartamento configurato."
     }
   },
   "options": {
@@ -80,6 +90,12 @@
           "scelta": "Azione"
         }
       },
+      "select_apartment": {
+        "title": "Scegli appartamento",
+        "data": {
+          "appartamento": "Appartamento"
+        }
+      },
       "select_group": {
         "title": "Scegli gruppo",
         "data": {
@@ -87,15 +103,23 @@
         }
       },
       "edit_group": {
-        "title": "Delta del gruppo {gruppo}",
+        "title": "Delta del gruppo {gruppo} ({nome})",
         "data": {
           "delta_comfort": "Delta comfort",
           "delta_eco": "Delta eco"
         }
+      },
+      "edit_global": {
+        "title": "Parametri globali {nome}",
+        "data": {
+          "attivo": "Attivo",
+          "soglia_pesi": "Soglia pesi"
+        }
       }
     },
     "abort": {
-      "nessun_gruppo": "Nessun gruppo configurato."
+      "nessun_gruppo": "Nessun gruppo configurato.",
+      "nessun_appartamento": "Nessun appartamento configurato."
     }
   },
   "services": {

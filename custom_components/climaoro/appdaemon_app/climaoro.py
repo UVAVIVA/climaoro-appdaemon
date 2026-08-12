@@ -27,6 +27,16 @@ class Climaoro(hass.Hass):
     basta rileggere la config (refresh periodico) e tutto continua a
     funzionare.
 
+    La config runtime ha la forma:
+        {"appartamenti": [{"id", "nome", "attivo", "soglia_pesi",
+                           "entities": {attivo, soglia_pesi},
+                           "gruppi": [{"id", "label", "delta_comfort",
+                                       "delta_eco", "calendar",
+                                       "entities", "stanze"}]}],
+         "entities": {...}}
+    Ogni appartamento ha il proprio master (attivo) e soglia pesi; i gruppi
+    (calendari/delta) sono copie indipendenti per appartamento.
+
     Args attesi in apps.yaml:
         ha_url:   base URL di HA (es. http://supervisor/core nell'addon)
         token:    token long-lived di HA (o ha_token per compatibilita')
@@ -56,37 +66,62 @@ class Climaoro(hass.Hass):
             self.run_in(self._retry_load, 30)
             return
 
-        self.run_every(self._refresh_config, "now", self.refresh_sec)
-        self.run_every(self.control_cycle, "now", self.cycle_sec)
-        self.run_every(self.rinnovo_modalita, "now", self.rinnovo_sec)
-        self.listen_event(self._on_config_updated, EVENT_CONFIG_UPDATED)
-        attivo_eid = ((self.config.get("global") or {}).get("entities") or {}).get("attivo")
-        if attivo_eid:
-            self.listen_state(self._on_attivo_changed, attivo_eid)
-        self.run_every(self.controllo_centralizzata, "now", self.check_centralizzata_sec)
-        self.log("App Climaoro avviata (gruppi: %d)", len(self.config.get("gruppi", [])))
+        self._schedule()
 
     def _retry_load(self, kwargs):
         self._load_config()
         if self.config is None:
             self.run_in(self._retry_load, 30)
             return
+        self._schedule()
+
+    def _schedule(self):
+        """Pianifica tutte le attivita' periodiche + ascolto dei master."""
         self.run_every(self._refresh_config, "now", self.refresh_sec)
         self.run_every(self.control_cycle, "now", self.cycle_sec)
         self.run_every(self.rinnovo_modalita, "now", self.rinnovo_sec)
-        attivo_eid = ((self.config.get("global") or {}).get("entities") or {}).get("attivo")
-        if attivo_eid:
-            self.listen_state(self._on_attivo_changed, attivo_eid)
+        self.listen_event(self._on_config_updated, EVENT_CONFIG_UPDATED)
+        for ap in self._apartamenti():
+            attivo_eid = (ap.get("entities") or {}).get("attivo")
+            if attivo_eid:
+                self.listen_state(
+                    self._on_attivo_changed, attivo_eid, apartment_id=ap.get("id")
+                )
         self.run_every(self.controllo_centralizzata, "now", self.check_centralizzata_sec)
-        self.log("Config caricata dopo retry (gruppi: %d)", len(self.config.get("gruppi", [])))
+        self.log("App Climaoro avviata (appartamenti: %d)", len(self._apartamenti()))
+
+    def _apartamenti(self):
+        """Lista appartamenti dalla config (fallback: singolo globale legacy)."""
+        apps = (self.config or {}).get("appartamenti")
+        if apps is not None:
+            return apps
+        if self.config and "global" in self.config:
+            g = self.config.get("global") or {}
+            return [
+                {
+                    "id": "casa",
+                    "nome": "Casa",
+                    "attivo": g.get("attivo"),
+                    "soglia_pesi": g.get("soglia_pesi"),
+                    "entities": g.get("entities") or {},
+                    "gruppi": self.config.get("gruppi", []),
+                }
+            ]
+        return []
+
+    def _ap_by_id(self, ap_id):
+        for ap in self._apartamenti():
+            if ap.get("id") == ap_id:
+                return ap
+        return None
 
     # ---------------------------------------------------------------- config
     def _load_config(self):
         try:
             self.config = self._fetch_config()
             self.config_time = time.time()
-            self.log("Config runtime caricata (%d gruppi, %d entita').",
-                     len(self.config.get("gruppi", [])),
+            self.log("Config runtime caricata (%d appartamenti, %d entita').",
+                     len(self.config.get("appartamenti", [])),
                      len(self.config.get("entities", {})))
         except Exception as err:
             self.config = None
@@ -148,16 +183,19 @@ class Climaoro(hass.Hass):
     def rinnovo_modalita(self, kwargs):
         if self.config is None:
             return
-        g = self.config.get("global") or {}
-        if g.get("attivo") is not True:
-            self.log("Rinnovo saltato: master spento.")
+        for ap in self._apartamenti():
+            self._rinnovo_apartment(ap)
+
+    def _rinnovo_apartment(self, ap):
+        if ap.get("attivo") is not True:
+            self.log("Rinnovo saltato: master '%s' spento.", ap.get("id", "?"))
             return
-        attivo_eid = (g.get("entities") or {}).get("attivo")
+        attivo_eid = (ap.get("entities") or {}).get("attivo")
         if attivo_eid and self.get_state(attivo_eid) == "off":
-            self.log("Rinnovo saltato: master spento (entita').")
+            self.log("Rinnovo saltato: master '%s' spento (entita').", ap.get("id", "?"))
             return
 
-        for gruppo in self.config.get("gruppi", []):
+        for gruppo in ap.get("gruppi", []):
             if self._fascia_corrente(gruppo) == VALUE_AUTONOMO:
                 continue
             for stanza in gruppo.get("stanze", []):
@@ -174,26 +212,27 @@ class Climaoro(hass.Hass):
         if self.config is None:
             return
         if new == "on":
-            self.log("Master acceso: attivazione modalita' centralizzata.")
+            ap_id = kwargs.get("apartment_id") or "casa"
+            self.log("Master '%s' acceso: attivazione modalita' centralizzata.", ap_id)
             self._refresh_config(None)
-            self._attiva_centralizzata_tutte()
+            ap = self._ap_by_id(ap_id)
+            if ap:
+                self._attiva_centralizzata(ap)
 
     def controllo_centralizzata(self, kwargs):
         """Controllo periodico: con master acceso, ri-assert della centralizzata."""
         if self.config is None:
             return
         self._refresh_config(None)
-        g = self.config.get("global") or {}
-        attivo_eid = (g.get("entities") or {}).get("attivo")
-        stato = self.get_state(attivo_eid) if attivo_eid else None
-        if stato == "on":
-            self._attiva_centralizzata_tutte()
+        for ap in self._apartamenti():
+            attivo_eid = (ap.get("entities") or {}).get("attivo")
+            stato = self.get_state(attivo_eid) if attivo_eid else None
+            if stato == "on":
+                self._attiva_centralizzata(ap)
 
-    def _attiva_centralizzata_tutte(self):
+    def _attiva_centralizzata(self, ap):
         """Accende la modalita' centralizzata per le stanze gestibili."""
-        if self.config is None:
-            return
-        for gruppo in self.config.get("gruppi", []):
+        for gruppo in ap.get("gruppi", []):
             if self._fascia_corrente(gruppo) == VALUE_AUTONOMO:
                 continue
             for stanza in gruppo.get("stanze", []):
@@ -238,25 +277,30 @@ class Climaoro(hass.Hass):
             self.log("Config non disponibile, ciclo saltato.")
             return
 
-        g = self.config.get("global") or {}
-        attivo_eid = (g.get("entities") or {}).get("attivo")
-        if attivo_eid and self.get_state(attivo_eid) == "off":
-            self.log("Master spento, nessuna azione.")
-            return
-
-        soglia_eid = (g.get("entities") or {}).get("soglia_pesi")
-        soglia_pesi = self._float_safe(self.get_state(soglia_eid)) if soglia_eid else None
-        if soglia_pesi is None:
-            self.log("ERRORE: soglia_pesi non disponibile - ciclo annullato.", level="ERROR")
-            return
-
-        self.log("Ora: %s %02d:%02d", GIORNI[self.datetime().weekday()],
-                 self.datetime().hour, self.datetime().minute)
-
-        for gruppo in self.config.get("gruppi", []):
-            self._controlla_gruppo(gruppo, soglia_pesi)
+        for ap in self._apartamenti():
+            self._cycle_apartment(ap)
 
         self.log("----- CICLO TERMINATO -----")
+
+    def _cycle_apartment(self, ap):
+        ap_id = ap.get("id", "?")
+        attivo_eid = (ap.get("entities") or {}).get("attivo")
+        if attivo_eid and self.get_state(attivo_eid) == "off":
+            self.log("Master '%s' spento, nessuna azione.", ap_id)
+            return
+
+        soglia_eid = (ap.get("entities") or {}).get("soglia_pesi")
+        soglia_pesi = self._float_safe(self.get_state(soglia_eid)) if soglia_eid else None
+        if soglia_pesi is None:
+            self.log("ERRORE: soglia_pesi non disponibile per '%s' - ciclo annullato.", ap_id, level="ERROR")
+            return
+
+        self.log("Appartamento '%s': %s %02d:%02d", ap_id,
+                 GIORNI[self.datetime().weekday()],
+                 self.datetime().hour, self.datetime().minute)
+
+        for gruppo in ap.get("gruppi", []):
+            self._controlla_gruppo(gruppo, soglia_pesi)
 
     def _controlla_gruppo(self, gruppo, soglia_pesi):
         fascia = self._fascia_corrente(gruppo)

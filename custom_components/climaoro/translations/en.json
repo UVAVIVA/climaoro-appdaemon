@@ -22,6 +22,7 @@
         "description": "Select the room entities (like in automations).\n\n{riepilogo}",
         "data": {
           "nome": "Room name",
+          "appartamento": "Apartment",
           "gruppo": "Group",
           "clima": "Thermostat (climatizzazione)",
           "temp_salvata": "Saved temperature",
@@ -40,8 +41,9 @@
       },
       "edit_room": {
         "title": "Edit {nome}",
-        "description": "Move the room to another group or change weight and inclusion.",
+        "description": "Move the room to another apartment or group, or change weight and inclusion.",
         "data": {
+          "appartamento": "Apartment",
           "gruppo": "Group",
           "peso": "Weight",
           "inclusione": "Included"
@@ -49,7 +51,14 @@
       },
       "global": {
         "title": "Global settings",
-        "description": "Master switch and weight threshold.",
+        "description": "Choose the apartment whose master switch and weight threshold to configure.",
+        "data": {
+          "appartamento": "Apartment"
+        }
+      },
+      "edit_global": {
+        "title": "Global settings {nome}",
+        "description": "Master switch and weight threshold of the apartment.",
         "data": {
           "attivo": "Active",
           "soglia_pesi": "Weight threshold"
@@ -63,7 +72,8 @@
       "nessuna_stanza": "Add at least one room before continuing."
     },
     "abort": {
-      "nessuna_stanza": "No room configured."
+      "nessuna_stanza": "No room configured.",
+      "nessun_appartamento": "No apartment configured."
     }
   },
   "options": {
@@ -80,6 +90,12 @@
           "scelta": "Action"
         }
       },
+      "select_apartment": {
+        "title": "Choose apartment",
+        "data": {
+          "appartamento": "Apartment"
+        }
+      },
       "select_group": {
         "title": "Choose group",
         "data": {
@@ -87,15 +103,23 @@
         }
       },
       "edit_group": {
-        "title": "Group deltas {gruppo}",
+        "title": "Group deltas {gruppo} ({nome})",
         "data": {
           "delta_comfort": "Comfort delta",
           "delta_eco": "Eco delta"
         }
+      },
+      "edit_global": {
+        "title": "Global settings {nome}",
+        "data": {
+          "attivo": "Active",
+          "soglia_pesi": "Weight threshold"
+        }
       }
     },
     "abort": {
-      "nessun_gruppo": "No group configured."
+      "nessun_gruppo": "No group configured.",
+      "nessun_appartamento": "No apartment configured."
     }
   },
   "services": {

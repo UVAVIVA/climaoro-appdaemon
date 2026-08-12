@@ -15,6 +15,7 @@ class ClimaoroCalendario extends HTMLElement {
     }
     this._config = config;
     this._gruppo = config.gruppo;
+    this._appartamento = config.appartamento || "casa";
     this._entity = config.entity;
     this._state = null;
     this._render();
@@ -44,6 +45,7 @@ class ClimaoroCalendario extends HTMLElement {
     const cur = this._cellValue(day, hour);
     const next = VALUES[(VALUES.indexOf(cur) + 1) % VALUES.length];
     this._hass.callService("climaoro", "set_calendario", {
+      appartamento: this._appartamento,
       gruppo: this._gruppo,
       giorno: day,
       ora: hour,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Final
 
 DOMAIN: Final = "climaoro"
@@ -30,6 +31,15 @@ CONF_GLOBAL: Final = "global"
 CONF_GROUPS: Final = "groups"
 CONF_ROOMS: Final = "rooms"
 
+# Dimensione "appartamento": ogni appartamento ha il proprio globale
+# (attivo + soglia pesi) e le proprie copie dei gruppi (calendari/delta).
+CONF_APPARTAMENTI: Final = "appartamenti"
+CONF_APPARTAMENTO: Final = "appartamento"
+
+# Id del primo appartamento (conserva i unique_id storici per continuita').
+APPARTAMENTO_CASA: Final = "casa"
+APPARTAMENTO_SECONDO: Final = "appartamento"
+
 CONF_ATTIVO: Final = "attivo"
 CONF_SOGLIA_PESI: Final = "soglia_pesi"
 
@@ -39,6 +49,12 @@ CONF_CALENDAR: Final = "calendar"
 
 CONF_ID: Final = "id"
 CONF_NOME: Final = "nome"
+
+APPARTAMENTI_DEFAULT: Final = [
+    {CONF_ID: APPARTAMENTO_CASA, CONF_NOME: "Casa"},
+    {CONF_ID: APPARTAMENTO_SECONDO, CONF_NOME: "Appartamento"},
+]
+
 CONF_GRUPPO: Final = "gruppo"
 CONF_CLIMA: Final = "clima"
 CONF_TEMP_SALVATA: Final = "temp_salvata"
@@ -124,3 +140,77 @@ def default_calendar(mode: str) -> dict[str, list[str]]:
                 ore.append(VALUE_ECO)
         calendario[_day] = ore
     return calendario
+
+
+def default_appartamenti(gruppi_attivi: list[str]) -> list[dict]:
+    """Appartamenti di default (Casa + Appartamento) con gruppi pronti.
+
+    Il secondo appartamento parte come COPIA indipendente del primo
+    (stessa struttura iniziale, poi modificabile a parte).
+    """
+    base = default_groups(gruppi_attivi)
+    apps: list[dict] = []
+    for i, cfg in enumerate(APPARTAMENTI_DEFAULT):
+        apps.append(
+            {
+                CONF_ID: cfg[CONF_ID],
+                CONF_NOME: cfg[CONF_NOME],
+                CONF_ATTIVO: DEFAULT_ATTIVO,
+                CONF_SOGLIA_PESI: DEFAULT_SOGLIA_PESI,
+                CONF_GROUPS: base if i == 0 else copy.deepcopy(base),
+            }
+        )
+    return apps
+
+
+def entity_uid(appartamento: str, *parts: str) -> str:
+    """Unique_id di un'entita' Climaoro, distinto per appartamento.
+
+    Il primo appartamento ('casa') conserva i unique_id storici
+    (climaoro_attivo, climaoro_peso_<stanza>, ...) cosi' le entita'
+    e la dashboard esistenti restano identiche; gli altri appartamenti
+    usano un prefisso (climaoro_<appartamento>_...).
+    """
+    base = "_".join(parts)
+    if appartamento == APPARTAMENTO_CASA:
+        return f"{DOMAIN}_{base}"
+    return f"{DOMAIN}_{appartamento}_{base}"
+
+
+def entity_name_prefix(appartamento: str, nome: str) -> str:
+    """Prefisso del nome entita': vuoto per 'casa', '<nome> ' per gli altri."""
+    if appartamento == APPARTAMENTO_CASA:
+        return ""
+    return f"{nome} "
+
+
+def migrate_options(options: dict) -> dict:
+    """Porta le options al formato multi-appartamento (idempotente).
+
+    Da: {attivo, soglia_pesi, groups, rooms}
+    A:  {appartamenti: [{id, nome, attivo, soglia_pesi, groups}, ...], rooms}
+    Le stanze ricevono il campo 'appartamento' (default 'casa').
+    """
+    if CONF_APPARTAMENTI in options:
+        return options
+
+    groups = options.get(CONF_GROUPS, {})
+    apps = []
+    for i, cfg in enumerate(APPARTAMENTI_DEFAULT):
+        apps.append(
+            {
+                CONF_ID: cfg[CONF_ID],
+                CONF_NOME: cfg[CONF_NOME],
+                CONF_ATTIVO: options.get(CONF_ATTIVO, DEFAULT_ATTIVO),
+                CONF_SOGLIA_PESI: options.get(CONF_SOGLIA_PESI, DEFAULT_SOGLIA_PESI),
+                CONF_GROUPS: groups if i == 0 else copy.deepcopy(groups),
+            }
+        )
+
+    rooms = []
+    for r in options.get(CONF_ROOMS, []):
+        rr = dict(r)
+        rr.setdefault(CONF_APPARTAMENTO, APPARTAMENTO_CASA)
+        rooms.append(rr)
+
+    return {CONF_APPARTAMENTI: apps, CONF_ROOMS: rooms}

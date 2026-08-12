@@ -47,7 +47,7 @@ DASHBOARD_TITLE = "Climaoro"
 # URL della card. La query "?v=" e' un CACHE-BUSTER: HA serve /local
 # con max-age ~31gg (niente ETag), quindi a ogni modifica del JS va
 # INCREMENTATO il numero per forzare il ricaricamento nei browser.
-CARD_URL = "/local/climaoro/climaoro-calendario.js?v=3"
+CARD_URL = "/local/climaoro/climaoro-calendario.js?v=4"
 APPS_DIR = "apps"
 APPS_YAML = "apps.yaml"
 APP_FILE = "climaoro.py"
@@ -236,67 +236,69 @@ async def async_restart_addon(hass: HomeAssistant, slug: str) -> bool:
 
 
 def build_dashboard_config(cfg: dict) -> dict:
-    """Dashboard Lovelace: una vista per il globale + una per ogni gruppo."""
-    gen = cfg.get("global", {}).get("entities", {})
+    """Dashboard Lovelace: una vista per appartamento (globale + gruppi)."""
+    views = []
+    for ap in cfg.get("appartamenti", []):
+        nome = ap.get("nome", ap.get("id"))
+        ap_id = ap.get("id")
+        gen = ap.get("entities", {})
 
-    views = [
-        {
-            "title": "Globale",
-            "path": "globale",
-            "cards": [
-                {
-                    "type": "entities",
-                    "title": "Climaoro - Globale",
-                    "entities": [
-                        {"entity": gen.get("attivo"), "name": "Sistema attivo"},
-                        {"entity": gen.get("soglia_pesi"), "name": "Soglia pesi"},
-                    ],
-                }
-            ],
-        }
-    ]
-
-    for gruppo in cfg.get("gruppi", []):
-        gent = gruppo.get("entities", {})
-        label = gruppo.get("label", gruppo.get("id"))
         cards = [
             {
                 "type": "entities",
-                "title": f"Gruppo {label}",
+                "title": f"Globale {nome}",
                 "entities": [
-                    {"entity": gent.get("delta_comfort"), "name": "Delta comfort"},
-                    {"entity": gent.get("delta_eco"), "name": "Delta eco"},
-                    {"entity": gent.get("calendario"), "name": "Calendario"},
+                    {"entity": gen.get("attivo"), "name": "Sistema attivo"},
+                    {"entity": gen.get("soglia_pesi"), "name": "Soglia pesi"},
                 ],
-            },
-            {
-                "type": "custom:climaoro-calendario",
-                "title": f"Calendario {label}",
-                "gruppo": gruppo.get("id"),
-                "entity": gent.get("calendario"),
-            },
+            }
         ]
-        for stanza in gruppo.get("stanze", []):
-            ent = stanza.get("entities", {})
-            stanza_entities = [
-                {"entity": ent.get("clima"), "name": "Climatizzazione"},
-                {"entity": ent.get("temp_salvata"), "name": "Temperatura salvata"},
-                {"entity": ent.get("peso"), "name": "Peso"},
-                {"entity": ent.get("inclusione"), "name": "Inclusione"},
-                {"entity": ent.get("modalita"), "name": "Modalita centralizzata"},
-                {"entity": ent.get("rinnovo"), "name": "Rinnova modalita"},
-            ]
+
+        for gruppo in ap.get("gruppi", []):
+            gent = gruppo.get("entities", {})
+            label = gruppo.get("label", gruppo.get("id"))
             cards.append(
                 {
                     "type": "entities",
-                    "title": f"{label} · {stanza.get('nome')}",
-                    "entities": [e for e in stanza_entities if e.get("entity")],
+                    "title": f"{nome} · Gruppo {label}",
+                    "entities": [
+                        {"entity": gent.get("delta_comfort"), "name": "Delta comfort"},
+                        {"entity": gent.get("delta_eco"), "name": "Delta eco"},
+                        {"entity": gent.get("calendario"), "name": "Calendario"},
+                    ],
                 }
             )
+            cards.append(
+                {
+                    "type": "custom:climaoro-calendario",
+                    "title": f"{nome} · Calendario {label}",
+                    "appartamento": ap_id,
+                    "gruppo": gruppo.get("id"),
+                    "entity": gent.get("calendario"),
+                }
+            )
+            for stanza in gruppo.get("stanze", []):
+                ent = stanza.get("entities", {})
+                stanza_entities = [
+                    {"entity": ent.get("clima"), "name": "Climatizzazione"},
+                    {"entity": ent.get("temp_salvata"), "name": "Temperatura salvata"},
+                    {"entity": ent.get("peso"), "name": "Peso"},
+                    {"entity": ent.get("inclusione"), "name": "Inclusione"},
+                    {"entity": ent.get("modalita"), "name": "Modalita centralizzata"},
+                    {"entity": ent.get("rinnovo"), "name": "Rinnova modalita"},
+                ]
+                cards.append(
+                    {
+                        "type": "entities",
+                        "title": f"{nome} · {label} · {stanza.get('nome')}",
+                        "entities": [e for e in stanza_entities if e.get("entity")],
+                    }
+                )
+
         views.append(
             {
-                "title": label,
-                "path": gruppo.get("id"),
+                "title": nome,
+                "path": ap_id,
                 "cards": cards,
             }
         )

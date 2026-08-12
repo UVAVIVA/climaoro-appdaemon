@@ -44,7 +44,13 @@ PERCORSO.txt                  Sintesi del progetto (leggere per primo)
     (autonomo = i termostati del gruppo tornano al firmware)
   - `number.climaoro_<gruppo>_delta_comfort` / `_delta_eco`
   - `sensor.climaoro_<gruppo>_calendario`
-- **Globale**: `switch.climaoro_attivo` (master) + `number.climaoro_soglia_pesi`.
+- **Appartamenti**: l'integrazione gestisce 2 unità indipendenti
+  (Casa + Appartamento). Ogni appartamento ha il proprio **Globale**
+  (`switch.climaoro_<app>_attivo` master + `number.climaoro_<app>_soglia_pesi`)
+  e **proprie copie** dei gruppi (calendari/delta). La Casa conserva i
+  unique_id storici (`climaoro_attivo`, `climaoro_soglia_pesi`); il secondo
+  appartamento usa il prefisso `climaoro_appartamento_`. Ogni stanza
+  appartiene a un appartamento.
 
 ### Logica di controllo (app AppDaemon)
 

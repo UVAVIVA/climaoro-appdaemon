@@ -4,6 +4,17 @@ set_calendario:
     Imposta una cella del calendario 7x24 di un gruppo
     (eco / comfort / autonomo).
   fields:
+    appartamento:
+      name: Appartamento
+      description: Appartamento del calendario (casa / appartamento).
+      required: false
+      default: casa
+      example: casa
+      selector:
+        select:
+          options:
+            - casa
+            - appartamento
     gruppo:
       name: Gruppo
       description: Gruppo del calendario.

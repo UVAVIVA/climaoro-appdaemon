@@ -199,6 +199,26 @@ emergenza individuale).
         DELTA_ECO_MAX al posto di DELTA_MAX -5..5), number.py (native_max_value
         per campo) e config_flow.py (slider wizard). VERIFICATO via API:
         comfort max 1.0, eco max 2.0; valori salvati (0.5/1.0) conservati.
+[12/08] DUE APPARTAMENTI (doppione globale): opzioni entry portate da
+        {attivo, soglia_pesi, groups, rooms} a {appartamenti: [{id, nome,
+        attivo, soglia_pesi, groups}, ...], rooms}. Ogni appartamento ha il
+        proprio master (attivo), soglia pesi e COPIE INDIPENDENTI dei gruppi
+        (copy.deepcopy in default_appartamenti/migrate_options). Le stanze
+        ricevono il campo 'appartamento' (default 'casa'). entity_uid/
+        entity_name_prefix: 'casa' conserva gli unique_id storici (nessuna
+        entita' nuova/orfana), gli altri appartamenti usano prefisso
+        climaoro_<appartamento>_ e nome "<Appartamento> ". Wizard config:
+        step Appartamento (crea il doppione) + globale per appartamento;
+        options flow: spostamento stanze tra appartamenti/gruppi.
+        IMPORTANTE: async_migrate_entry va nel modulo __init__.py, NON in
+        config_flow.py (HA 2026.8 cerca hasattr(component, 'async_migrate_entry')).
+        DEPLOY VERIFICATO su VM: entry migrata a version 2 (options persistite
+        con 2 appartamenti + 5 rooms), 32 entita' risolte (climaoro_attivo/
+        soglia/gruppi/stanze di casa INTATTI + climaoro_appartamento_* nuovi,
+        nessun duplicato), /api/climaoro/config con 2 appartamenti (gruppi e
+        calendari di casa conservati, appartamento senza stanze), app AppDaemon
+        "Config runtime caricata (2 appartamenti, 32 entita')" e cicli
+        separati per master (casa/appartamento).
 
 -----------------------------------------------------------------------
 4. PUNTI APERTI / DA DEFINIRE
@@ -320,5 +340,12 @@ emergenza individuale).
 10. Commit + push su GitHub (fatto l'11/08: rinnovo master, centralizzata
     master ON + check 20 min, pannello multi-vista, simulatore rimosso).
     RIMANE DA DECIDERE: repo pubblico per HACS o privato.
+11. (FATTO 12/08) DUE APPARTAMENTI: v2 entry con appartamenti + migrazione
+    automatica (async_migrate_entry in __init__.py), entity_uid per
+    appartamento (casa invariata), wizard con step Appartamento, options
+    flow con spostamento stanze tra appartamenti. Deploy su VM verificato
+    (2 appartamenti, 32 entita', app AppDaemon aggiornata). Prossimo:
+    assegnare le stanze all'appartamento 2 e configurare i suoi master/
+    delta/calendari (i gruppi partono come copie della casa).
 
 =======================================================================
