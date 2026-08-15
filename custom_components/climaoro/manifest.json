@@ -1,6 +1,6 @@
 {
   "domain": "climaoro",
-  "name": "Climaoro",
+  "name": "ClimaORO",
   "codeowners": ["@climaoro"],
   "config_flow": true,
   "documentation": "https://github.com/UVAVIVA/climaoro-appdaemon",

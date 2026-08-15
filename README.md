@@ -41,11 +41,12 @@ PERCORSO.txt                  Sintesi del progetto (leggere per primo)
   (non c'è un limite fisso al numero di stanze, serve almeno una stanza)
 - **Gruppi** fissi GIORNO / NOTTE / SERVIZI (opzionali). Ogni gruppo di
   ogni appartamento ha:
-  - 2 **delta** (comfort, eco)
+  - 4 **delta** (accensione e spegnimento, per le 2 fasce comfort/eco),
+    che si **sommano** a `temp_salvata` per definire i setpoint
   - un **calendario 7x24** con tendina `eco` / `comfort` / `autonomo`
     (autonomo = i termostati del gruppo tornano al firmware)
-  - per la Casa: `number.climaoro_<gruppo>_delta_comfort` / `_delta_eco`
-    e `sensor.climaoro_<gruppo>_calendario`
+  - per la Casa: `number.climaoro_<gruppo>_delta_*` (accensione e
+    spegnimento per comfort/eco) e `sensor.climaoro_<gruppo>_calendario`
   - per il secondo appartamento: `number.climaoro_appartamento_<gruppo>_delta_*`
     e `sensor.climaoro_appartamento_<gruppo>_calendario`
 - **Appartamenti**: l'integrazione gestisce 2 unità indipendenti
@@ -61,26 +62,31 @@ PERCORSO.txt                  Sintesi del progetto (leggere per primo)
 
 Ogni ciclo (60s), per ogni gruppo in fascia non-autonoma:
 
-1. Calcola **guardia** = temp_salvata - delta e **lavoro** =
-   temp_salvata (il riscaldamento arriva al massimo alla temperatura
-   salvata, mai sopra) dalla fascia corrente.
-2. Allinea il setpoint a guardia e raccoglie le stanze in richiesta
-   (temp reale <= temp_salvata - 0.5), sommandone i pesi.
+1. Calcola i setpoint dalla fascia corrente:
+   - **attesa** (termostato spento): `setpoint = temp_salvata + delta_accensione`
+     (il termostato accende a `setpoint - 0.5`)
+   - **lavoro** (termostato acceso): `setpoint = temp_salvata + delta_spegnimento`
+     (il termostato spegne a `setpoint + 0.5`)
+2. Allinea il setpoint all'attesa e raccoglie le stanze in **richiesta**
+   (temp reale <= temp_salvata - 0.5, soglia indipendente dal delta
+   accensione), sommandone i pesi.
 3. Se qualche stanza è già in **riscaldamento** (`hvac_action=heating`):
    priorità a lei, si accendono le richiedenti.
 4. Altrimenti, se **totale pesi >= soglia**: accensione collettiva
-   (tutte le richiedenti a lavoro).
-5. Altrimenti **emergenza individuale**: stanza con temp <= guardia - 0.4
-   accesa a lavoro.
+   (tutte le richiedenti, scritto il setpoint di lavoro).
+5. Altrimenti **emergenza individuale**: stanza con temp <=
+   temp_salvata + delta_accensione - 0.4 (0.1 sopra l'accensione
+   autonoma del termostato) accesa a lavoro.
 
-Nota: `delta_comfort`/`delta_eco` hanno il ruolo del "delta squadra"
-del sistema originale: si **sottraggono** sempre a temp_salvata per
-definire la guardia (attesa/risparmio). Il tetto di riscaldamento è la
-temperatura salvata stessa.
+Nota: i `delta_*` si **sommano** a temp_salvata (possono essere
+negativi o positivi). I delta di accensione definiscono quando il
+termostato parte da solo; i delta di spegnimento quando si spegne
+dopo un'accensione.
 
 Sicurezza e centralizzata:
-- Prima di un comando a un climate l'app accende automaticamente lo
-  `switch.<dev>_modalita_centralizzata` se spento.
+- Prima di un comando a un climate l'app verifica che lo
+  `switch.<dev>_modalita_centralizzata` sia attivo; se spento lo accende
+  e ricontrolla (max 2 tentativi), solo poi invia il comando.
 - Quando il master `switch.climaoro_attivo` passa su **ON**, l'app
   attiva subito la modalità centralizzata di tutte le stanze incluse
   (non in fascia `autonomo`). Allo spegnimento del master **non**

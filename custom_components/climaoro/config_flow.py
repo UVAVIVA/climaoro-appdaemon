@@ -357,7 +357,7 @@ class ClimaoroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     ap[CONF_SOGLIA_PESI] = user_input.get(
                         CONF_SOGLIA_PESI, DEFAULT_SOGLIA_PESI
                     )
-            return self.async_create_entry(title="Climaoro", data=data)
+            return self.async_create_entry(title="ClimaORO", data=data)
 
         schema = {
             vol.Required(CONF_ATTIVO, default=DEFAULT_ATTIVO): selector.BooleanSelector(),

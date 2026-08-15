@@ -290,6 +290,9 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Configura l'integrazione da una config entry."""
+    if entry.title in ("Climaoro", "Climaoro by UVAVIVA", "by UVAVIVA", "ClimaORO by UVAVIVA"):
+        hass.config_entries.async_update_entry(entry, title="ClimaORO")
+
     if entry.data.get("data"):
         hass.config_entries.async_update_entry(
             entry, data={}, options=entry.data["data"]

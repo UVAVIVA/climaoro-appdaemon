@@ -274,6 +274,41 @@ emergenza individuale).
 +          colgroup ora=38px) con caratteri piu' grandi (titolo 17px,
 +          giorni/ore 13px, celle 14px bold alte 26px). Cache-buster
 +          CARD_URL portato a ?v=5.
++[15/08 sera] SOGLIA DI RICHIESTA DEFINITA: una stanza in attesa diventa
++        RICHIEDENTE (candidata ad accendere) quando temp <= temp_salvata
++        - 0.5 (inizio banda isteresi centrata su temp_salvata),
++        INDIPENDENTE dal delta accensione. Es. t_salvata 20 -> richiesta
++        da 19.5. Se i pesi raggiungono la soglia (o priorita'/emergenza)
++        la stanza parte SCRIVENDO il setpoint di spegnimento (t_salvata +
++        delta_sp): e' quella scrittura a far cambiare stato al termostato
++        (con setpoint accensione 19 e temp 19.5 il termostato NON
++        accenderebbe da solo - accende a 18.5). Emergenza individuale
++        (pesi non raggiunti) da temp <= t_salvata + delta_acc - 0.4
++        (con d_acc -1: 19 - 0.4 = 18.6, cioe' 0.1 sopra il punto in cui
++        il termostato accenderebbe da solo, 18.5): solo allora si scrive
++        il setpoint di spegnimento. Applicato in
++        entrambe le copie (custom_components/climaoro/appdaemon_app/
++        climaoro.py e appdaemon/climaoro.py), identiche, py_compile OK.
++        Verificato con harness su codice reale: 60/60 scenari PASS,
++        incluso il caso t_salvata 20, d_acc -1, d_sp +0.5, temp 19.5,
++        pesi 5>=5 -> setpoint 19.0 poi 20.5.
++[15/08 notte] _comando_sicuro_per_stanza CON RETRY (2 tentativi): se la
++        centralizzata di una stanza e' spenta viene ATTIVATA (switch/turn_on)
++        e si ricontrolla; solo se a quel punto e' attiva si invia il comando
++        al climate, altrimenti si riprova una seconda volta; dopo 2 tentativi
++        -> log ERRORE e stanza saltata (return False). time.sleep(2) tra i
++        tentativi: accettato, riscaldamento a pavimento (i secondi sono
++        trascurabili). Applicato in entrambe le copie (appdaemon/climaoro.py
++        e custom_components/climaoro/appdaemon_app/climaoro.py), py_compile
++        OK, hash IDENTICI.
++[15/08 notte] DOPPIA VERITA' SU "attivo" RIMOSSA: verificato che
++        ap["attivo"] (bool) e entities.attivo (switch) NON sono due fonti
++        separate - switch.py is_on legge bool(ap[CONF_ATTIVO]) e turn_on/off
++        scrive ap[CONF_ATTIVO] nelle options (stessa cosa). ap["attivo"] nella
++        config runtime e' solo lo snapshot al refresh, lo switch e' lo stato
++        live. FIX: _rinnovo_apartment usa SOLO lo stato live dello switch
++        (rimossa la riga "if ap.get('attivo') is not True"), coerentemente con
++        _cycle_apartment e controllo_centralizzata. Entrambe le copie allineate.
  
 -----------------------------------------------------------------------
 4. PUNTI APERTI / DA DEFINIRE

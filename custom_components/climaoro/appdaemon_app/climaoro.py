@@ -41,13 +41,25 @@ class Climaoro(hass.Hass):
     Ogni appartamento ha il proprio master (attivo) e soglia pesi; i gruppi
     (calendari/delta) sono copie indipendenti per appartamento.
 
-    I delta si sommano a temp_salvata:
-      - delta_accensione: il clima si accende a temp_salvata + delta
-      - delta_spegnimento: il clima si spegne a temp_salvata + delta
-    Dato che il termostato commuta a setpoint ± 0.5, per accendere a
-    temp_salvata + delta_acc il setpoint diventa (temp_salvata + delta_acc)
-    + 0.5; per spegnere a temp_salvata + delta_sp il setpoint diventa
-    (temp_salvata + delta_sp) - 0.5.
+    I delta si sommano a temp_salvata e definiscono il setpoint da
+    applicare al climate (il termostato aggiunge la sua isteresi ± 0.5):
+      - delta_accensione: usato quando il termostato e' SPENTO (attesa).
+        Setpoint = temp_salvata + delta_acc; il termostato accende a
+        temp_salvata + delta_acc - 0.5. Es. temp_salvata 20, delta -1:
+        setpoint 19, accende a 18.5.
+      - delta_spegnimento: usato quando il termostato e' ACCESO (lavoro).
+        Setpoint = temp_salvata + delta_sp; il termostato spegne a
+        temp_salvata + delta_sp + 0.5. Es. temp_salvata 20, delta 0:
+        setpoint 20, spegne a 20.5.
+    Una stanza in attesa diventa RICHIEDENTE (candidata ad accendere)
+    quando temp <= temp_salvata - 0.5 (inizio della banda isteresi
+    centrata su temp_salvata: li' il termostato partirebbe da solo).
+    Se i pesi raggiungono la soglia (o c'e' priorita'/emergenza) viene
+    accesa SCRIVENDO il setpoint di spegnimento (temp_salvata + delta_sp):
+    e' quella scrittura a far cambiare stato al termostato. Se i pesi NON
+    raggiungono la soglia, l'emergenza individuale parte da
+    temp <= temp_salvata + delta_acc - 0.4 (0.1 sopra il punto in cui il
+    termostato accenderebbe da solo), scrivendo il setpoint di spegnimento.
 
     Args attesi in apps.yaml:
         ha_url:   base URL di HA (es. http://supervisor/core nell'addon)
@@ -200,9 +212,6 @@ class Climaoro(hass.Hass):
             self._rinnovo_apartment(ap)
 
     def _rinnovo_apartment(self, ap):
-        if ap.get("attivo") is not True:
-            self.log("Rinnovo saltato: master '%s' spento.", ap.get("id", "?"))
-            return
         attivo_eid = (ap.get("entities") or {}).get("attivo")
         if attivo_eid and self.get_state(attivo_eid) == "off":
             self.log("Rinnovo saltato: master '%s' spento (entita').", ap.get("id", "?"))
@@ -261,27 +270,30 @@ class Climaoro(hass.Hass):
                          stanza.get("nome"), eid_modalita)
 
     def _comando_sicuro_per_stanza(self, stanza, entity, service, data, stanza_id):
-        """Accende prima il pulsante modalita' centralizzata se necessario."""
+        """Attiva la modalita' centralizzata se serve, poi esegue il comando.
+
+        Prima di ogni comando la centralizzata deve essere attiva: se non lo
+        e', viene attivata e si ricontrolla; se a quel punto e' attiva si
+        invia il comando, altrimenti si riprova un'altra volta.
+        """
         eid_modalita = (stanza.get("entities") or {}).get("modalita")
         if not eid_modalita:
             data["entity_id"] = entity
             self.call_service(service, **data)
             return True
 
-        if self.get_state(eid_modalita) == "on":
-            data["entity_id"] = entity
-            self.call_service(service, **data)
-            return True
+        for _ in range(2):
+            if self.get_state(eid_modalita) != "on":
+                self.log("Stanza %s: modalita' centralizzata spenta, attivazione.", stanza_id)
+                self.call_service("switch/turn_on", entity_id=eid_modalita)
+                time.sleep(2)
+            if self.get_state(eid_modalita) == "on":
+                data["entity_id"] = entity
+                self.call_service(service, **data)
+                return True
 
-        self.log("Stanza %s: modalita' centralizzata spenta, tentativo di accensione.", stanza_id)
-        self.call_service("switch/turn_on", entity_id=eid_modalita)
-        time.sleep(2)
-        if self.get_state(eid_modalita) != "on":
-            self.log("ERRORE: Stanza %s - modalita' centralizzata non attivabile.", stanza_id, level="ERROR")
-            return False
-        data["entity_id"] = entity
-        self.call_service(service, **data)
-        return True
+        self.log("ERRORE: Stanza %s - modalita' centralizzata non attivabile.", stanza_id, level="ERROR")
+        return False
 
     # ------------------------------------------------------------ controllo
     def control_cycle(self, kwargs):
@@ -376,14 +388,13 @@ class Climaoro(hass.Hass):
         totale_pesi = 0.0
 
         for z in zone_ok:
-            soglia_on = z["t_salvata"] + delta_acc
-            setpoint_on = soglia_on + 0.5
-            soglia_off = z["t_salvata"] + delta_sp
-            setpoint_off = soglia_off - 0.5
+            setpoint_on = z["t_salvata"] + delta_acc
+            setpoint_off = z["t_salvata"] + delta_sp
+            soglia_richiesta = z["t_salvata"] - 0.5
 
-            self.log("Stanza %s: accende a %.1f (setpoint %.1f), spegne a %.1f (setpoint %.1f), reale=%.1f, action=%s",
-                     z["nome"], soglia_on, setpoint_on, soglia_off, setpoint_off,
-                     z["temp"], z["action"])
+            self.log("Stanza %s: attesa accende a %.1f (setpoint %.1f), lavoro spegne a %.1f (setpoint %.1f), richiesta a %.1f, reale=%.1f, action=%s",
+                     z["nome"], setpoint_on - 0.5, setpoint_on, setpoint_off + 0.5, setpoint_off,
+                     soglia_richiesta, z["temp"], z["action"])
 
             if z["action"] == "heating":
                 zone_riscaldamento.append(z["nome"])
@@ -392,12 +403,12 @@ class Climaoro(hass.Hass):
 
             if not self._comando_sicuro_per_stanza(
                 z["stanza"], z["stanza"]["entities"].get("clima"),
-                "climate/set_temperature", {"temperature": setpoint_off}, z["nome"]
+                "climate/set_temperature", {"temperature": setpoint_on}, z["nome"]
             ):
                 continue
-            self.log("Stanza %s: setpoint allineato allo spegnimento (%.1f C).", z["nome"], setpoint_off)
+            self.log("Stanza %s: setpoint allineato all'accensione (%.1f C).", z["nome"], setpoint_on)
 
-            if z["temp"] <= soglia_on:
+            if z["temp"] <= soglia_richiesta:
                 lista_richieste.append(z["nome"])
                 eid_peso = (z["stanza"].get("entities") or {}).get("peso")
                 peso = self._float_safe(self.get_state(eid_peso), 0.0) if eid_peso else 0.0
@@ -417,9 +428,9 @@ class Climaoro(hass.Hass):
             for z in zone_ok:
                 if z["action"] == "heating":
                     continue
-                soglia_on = z["t_salvata"] + delta_acc
-                if z["temp"] <= soglia_on - 0.4:
-                    self.log("Emergenza stanza %s: %.1f <= %.1f", z["nome"], z["temp"], soglia_on - 0.4)
+                soglia_emergenza = z["t_salvata"] + delta_acc - 0.4
+                if z["temp"] <= soglia_emergenza:
+                    self.log("Emergenza stanza %s: %.1f <= %.1f", z["nome"], z["temp"], soglia_emergenza)
                     self._accendi_stanza(gruppo, z["nome"])
 
     def _accendi_stanza(self, gruppo, nome):
@@ -431,13 +442,13 @@ class Climaoro(hass.Hass):
         if t_salvata is None:
             self.log("ERRORE: Stanza %s: temp_salvata mancante - accensione saltata.", nome, level="ERROR")
             return
-        delta_acc = self._delta_gruppo(gruppo, "accensione")
-        if delta_acc is None:
+        delta_sp = self._delta_gruppo(gruppo, "spegnimento")
+        if delta_sp is None:
             return
-        setpoint_on = t_salvata + delta_acc + 0.5
+        setpoint_off = t_salvata + delta_sp
         self._comando_sicuro_per_stanza(
             stanza, e.get("clima"), "climate/set_temperature",
-            {"temperature": setpoint_on}, nome
+            {"temperature": setpoint_off}, nome
         )
 
     def _stanza_by_name(self, gruppo, nome):
