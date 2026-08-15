@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+
 from homeassistant import config_entries
 from homeassistant.components.number import NumberEntity
 from homeassistant.components.number.const import NumberMode
@@ -13,15 +15,24 @@ from .const import (
     APPARTAMENTO_CASA,
     CONF_APPARTAMENTI,
     CONF_APPARTAMENTO,
+    CONF_DELTA_ACCENSIONE_COMFORT,
+    CONF_DELTA_ACCENSIONE_ECO,
+    CONF_DELTA_SPEGNIMENTO_COMFORT,
+    CONF_DELTA_SPEGNIMENTO_ECO,
     CONF_GROUPS,
     CONF_ID,
     CONF_NOME,
     CONF_PESO,
     CONF_ROOMS,
     CONF_SOGLIA_PESI,
-    DELTA_COMFORT_MAX,
-    DELTA_ECO_MAX,
-    DELTA_MIN,
+    DELTA_ACCENSIONE_COMFORT_MAX,
+    DELTA_ACCENSIONE_COMFORT_MIN,
+    DELTA_ACCENSIONE_ECO_MAX,
+    DELTA_ACCENSIONE_ECO_MIN,
+    DELTA_SPEGNIMENTO_COMFORT_MAX,
+    DELTA_SPEGNIMENTO_COMFORT_MIN,
+    DELTA_SPEGNIMENTO_ECO_MAX,
+    DELTA_SPEGNIMENTO_ECO_MIN,
     DELTA_STEP,
     DOMAIN,
     GROUP_LABELS,
@@ -35,6 +46,34 @@ from .const import (
     entity_uid,
 )
 from . import fire_config_updated, get_apartment, get_group, get_rooms
+
+# Min, max, etichetta e unique_id legacy per ogni campo delta.
+DELTA_CAMPI: dict[str, tuple[float, float, str, str]] = {
+    CONF_DELTA_ACCENSIONE_COMFORT: (
+        DELTA_ACCENSIONE_COMFORT_MIN,
+        DELTA_ACCENSIONE_COMFORT_MAX,
+        "comfort Accensione",
+        "delta_comfort",
+    ),
+    CONF_DELTA_ACCENSIONE_ECO: (
+        DELTA_ACCENSIONE_ECO_MIN,
+        DELTA_ACCENSIONE_ECO_MAX,
+        "eco Accensione",
+        "delta_eco",
+    ),
+    CONF_DELTA_SPEGNIMENTO_COMFORT: (
+        DELTA_SPEGNIMENTO_COMFORT_MIN,
+        DELTA_SPEGNIMENTO_COMFORT_MAX,
+        "comfort Spegnimento",
+        "delta_spegnimento_comfort",
+    ),
+    CONF_DELTA_SPEGNIMENTO_ECO: (
+        DELTA_SPEGNIMENTO_ECO_MIN,
+        DELTA_SPEGNIMENTO_ECO_MAX,
+        "eco Spegnimento",
+        "delta_spegnimento_eco",
+    ),
+}
 
 
 class _BaseNumber(NumberEntity):
@@ -74,7 +113,7 @@ class SogliaPesi(_BaseNumber, NumberEntity):
         return ap.get(CONF_SOGLIA_PESI)
 
     async def async_set_native_value(self, value: float) -> None:
-        options = dict(self._entry.options)
+        options = copy.deepcopy(dict(self._entry.options))
         appartamenti = list(options.get(CONF_APPARTAMENTI, []))
         for ap in appartamenti:
             if ap.get(CONF_ID) == self._app_id:
@@ -86,9 +125,8 @@ class SogliaPesi(_BaseNumber, NumberEntity):
 
 
 class DeltaGruppo(_BaseNumber, NumberEntity):
-    """Delta comfort/eco di un gruppo di un appartamento."""
+    """Delta accensione/spegnimento (comfort/eco) di un gruppo."""
 
-    _attr_native_min_value = DELTA_MIN
     _attr_native_step = DELTA_STEP
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_mode = NumberMode.SLIDER
@@ -99,15 +137,14 @@ class DeltaGruppo(_BaseNumber, NumberEntity):
         self._app_id = app_id
         self._gruppo = gruppo
         self._campo = campo
-        self._attr_unique_id = entity_uid(app_id, "delta", gruppo, campo)
+        min_v, max_v, label, uid = DELTA_CAMPI[campo]
+        self._attr_native_min_value = min_v
+        self._attr_native_max_value = max_v
+        self._attr_unique_id = entity_uid(app_id, "delta", gruppo, uid)
         self._attr_name = (
             f"Climaoro {entity_name_prefix(app_id, nome)}"
-            f"{GROUP_LABELS[gruppo]} Delta {campo.split('_', 1)[1]}"
+            f"{GROUP_LABELS[gruppo]} Delta {label}"
         )
-
-    @property
-    def native_max_value(self) -> float:
-        return DELTA_COMFORT_MAX if self._campo == "delta_comfort" else DELTA_ECO_MAX
 
     @property
     def native_value(self) -> float | None:
@@ -117,7 +154,7 @@ class DeltaGruppo(_BaseNumber, NumberEntity):
         return group.get(self._campo)
 
     async def async_set_native_value(self, value: float) -> None:
-        options = dict(self._entry.options)
+        options = copy.deepcopy(dict(self._entry.options))
         appartamenti = list(options.get(CONF_APPARTAMENTI, []))
         for ap in appartamenti:
             if ap.get(CONF_ID) != self._app_id:
@@ -159,7 +196,7 @@ class PesoStanza(_BaseNumber, NumberEntity):
         return None
 
     async def async_set_native_value(self, value: float) -> None:
-        options = dict(self._entry.options)
+        options = copy.deepcopy(dict(self._entry.options))
         rooms = list(options.get(CONF_ROOMS, []))
         for room in rooms:
             if room.get("id") == self._room_id:
@@ -182,8 +219,8 @@ async def async_setup_entry(
         nome = ap.get(CONF_NOME, app_id)
         entities.append(SogliaPesi(hass, app_id, nome))
         for gruppo in ap.get(CONF_GROUPS, {}):
-            entities.append(DeltaGruppo(hass, app_id, nome, gruppo, "delta_comfort"))
-            entities.append(DeltaGruppo(hass, app_id, nome, gruppo, "delta_eco"))
+            for campo in DELTA_CAMPI:
+                entities.append(DeltaGruppo(hass, app_id, nome, gruppo, campo))
     for room in entry.options.get(CONF_ROOMS, []):
         app_id = room.get(CONF_APPARTAMENTO, APPARTAMENTO_CASA)
         ap = get_apartment(hass, app_id)

@@ -105,8 +105,10 @@
       "edit_group": {
         "title": "Group deltas {gruppo} ({nome})",
         "data": {
-          "delta_comfort": "Comfort delta",
-          "delta_eco": "Eco delta"
+          "delta_accensione_comfort": "Turn-on comfort delta",
+          "delta_accensione_eco": "Turn-on eco delta",
+          "delta_spegnimento_comfort": "Turn-off comfort delta",
+          "delta_spegnimento_eco": "Turn-off eco delta"
         }
       },
       "edit_global": {

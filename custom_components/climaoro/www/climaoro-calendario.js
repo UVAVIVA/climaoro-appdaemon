@@ -56,24 +56,28 @@ class ClimaoroCalendario extends HTMLElement {
   _render() {
     this.innerHTML = "";
     const wrap = document.createElement("div");
-    wrap.style.cssText = "overflow-x:auto;font-family:var(--primary-font-family);";
+    wrap.style.cssText =
+      "font-family:var(--primary-font-family);width:100%;box-sizing:border-box;";
 
     // Orientamento: righe = 24 ore, colonne = 7 giorni.
-    // Cosi' la tabella resta ~250px di larghezza (non sborda piu'
-    // dalla card e non c'e' scroll da far "risaltare" al click).
+    // La tabella si estende su tutta la larghezza della card (table-layout
+    // fixed), cosi' le celle riempiono lo spazio e i caratteri sono piu'
+    // grandi.
     let html = "";
     const nome = this._config.title || this._config.nome;
     if (nome) {
       html +=
-        "<div style='text-align:center;font-weight:500;font-size:14px;padding-bottom:6px'>" +
+        "<div style='text-align:center;font-weight:600;font-size:17px;padding-bottom:8px'>" +
         nome +
         "</div>";
     }
-    html += "<table style='border-collapse:collapse;margin:0 auto'>";
-    html += "<tr><th style='padding:2px 6px;font-size:11px'></th>";
+    html +=
+      "<table style='border-collapse:collapse;width:100%;table-layout:fixed'>";
+    html += "<colgroup><col style='width:38px'></colgroup>";
+    html += "<tr><th style='padding:2px 4px;font-size:13px'></th>";
     for (let d = 0; d < DAYS.length; d++) {
       html +=
-        "<th style='padding:2px 3px;font-size:10px;font-weight:400;color:var(--secondary-text-color)'>" +
+        "<th style='padding:2px 2px;font-size:13px;font-weight:500;color:var(--secondary-text-color)'>" +
         DAYS[d] +
         "</th>";
     }
@@ -81,14 +85,14 @@ class ClimaoroCalendario extends HTMLElement {
 
     for (let h = 0; h < 24; h++) {
       html +=
-        "<tr><td style='padding:2px 6px;font-size:10px;color:var(--secondary-text-color);text-align:right'>" +
+        "<tr><td style='padding:2px 4px;font-size:12px;color:var(--secondary-text-color);text-align:right'>" +
         h +
         "</td>";
       for (let d = 0; d < DAYS.length; d++) {
         const day = DAYS[d];
         const v = this._cellValue(day, h);
         html +=
-          "<td><button data-day='" +
+          "<td style='padding:0'><button data-day='" +
           day +
           "' data-hour='" +
           h +
@@ -98,7 +102,7 @@ class ClimaoroCalendario extends HTMLElement {
           h +
           ":00 - " +
           TITLES[v] +
-          "' style='width:30px;height:16px;font-size:9px;border:none;border-radius:3px;margin:1px;cursor:pointer;color:#fff;padding:0;background:" +
+          "' style='width:100%;height:26px;font-size:14px;font-weight:600;border:none;border-radius:4px;margin:1px 0;cursor:pointer;color:#fff;padding:0;background:" +
           (COLORS[v] || COLORS.eco) +
           "'>" +
           (LABELS[v] || v) +

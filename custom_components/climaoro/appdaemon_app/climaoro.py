@@ -30,12 +30,24 @@ class Climaoro(hass.Hass):
     La config runtime ha la forma:
         {"appartamenti": [{"id", "nome", "attivo", "soglia_pesi",
                            "entities": {attivo, soglia_pesi},
-                           "gruppi": [{"id", "label", "delta_comfort",
-                                       "delta_eco", "calendar",
+                           "gruppi": [{"id", "label",
+                                       "delta_accensione_comfort",
+                                       "delta_accensione_eco",
+                                       "delta_spegnimento_comfort",
+                                       "delta_spegnimento_eco",
+                                       "calendar",
                                        "entities", "stanze"}]}],
          "entities": {...}}
     Ogni appartamento ha il proprio master (attivo) e soglia pesi; i gruppi
     (calendari/delta) sono copie indipendenti per appartamento.
+
+    I delta si sommano a temp_salvata:
+      - delta_accensione: il clima si accende a temp_salvata + delta
+      - delta_spegnimento: il clima si spegne a temp_salvata + delta
+    Dato che il termostato commuta a setpoint ± 0.5, per accendere a
+    temp_salvata + delta_acc il setpoint diventa (temp_salvata + delta_acc)
+    + 0.5; per spegnere a temp_salvata + delta_sp il setpoint diventa
+    (temp_salvata + delta_sp) - 0.5.
 
     Args attesi in apps.yaml:
         ha_url:   base URL di HA (es. http://supervisor/core nell'addon)
@@ -171,12 +183,13 @@ class Climaoro(hass.Hass):
             return giorni[ora]
         return VALUE_ECO
 
-    def _delta_gruppo(self, gruppo):
+    def _delta_gruppo(self, gruppo, campo):
+        """Delta (accensione/spegnimento) del gruppo nella fascia corrente."""
         fascia = self._fascia_corrente(gruppo)
         if fascia == VALUE_COMFORT:
-            return self._float_safe(gruppo.get("delta_comfort"))
+            return self._float_safe(gruppo.get(f"delta_{campo}_comfort"))
         if fascia == VALUE_ECO:
-            return self._float_safe(gruppo.get("delta_eco"))
+            return self._float_safe(gruppo.get(f"delta_{campo}_eco"))
         return None  # autonomo: nessun delta
 
     # -------------------------------------------------------------- azioni
@@ -309,9 +322,10 @@ class Climaoro(hass.Hass):
             self.log("Gruppo '%s': fascia autonomo - termostati al firmware, salto.", gruppo.get("id"))
             return
 
-        delta = self._delta_gruppo(gruppo)
-        if delta is None:
-            self.log("ERRORE: Gruppo '%s': delta non disponibile.", gruppo.get("id"), level="ERROR")
+        delta_acc = self._delta_gruppo(gruppo, "accensione")
+        delta_sp = self._delta_gruppo(gruppo, "spegnimento")
+        if delta_acc is None or delta_sp is None:
+            self.log("ERRORE: Gruppo '%s': delta non disponibili.", gruppo.get("id"), level="ERROR")
             return
 
         zone_ok = []
@@ -362,11 +376,14 @@ class Climaoro(hass.Hass):
         totale_pesi = 0.0
 
         for z in zone_ok:
-            guardia = z["t_salvata"] - delta
-            lavoro = z["t_salvata"]
+            soglia_on = z["t_salvata"] + delta_acc
+            setpoint_on = soglia_on + 0.5
+            soglia_off = z["t_salvata"] + delta_sp
+            setpoint_off = soglia_off - 0.5
 
-            self.log("Stanza %s: guardia=%.1f, lavoro=%.1f, reale=%.1f, setpoint=%.1f, action=%s",
-                     z["nome"], guardia, lavoro, z["temp"], z["setpoint"], z["action"])
+            self.log("Stanza %s: accende a %.1f (setpoint %.1f), spegne a %.1f (setpoint %.1f), reale=%.1f, action=%s",
+                     z["nome"], soglia_on, setpoint_on, soglia_off, setpoint_off,
+                     z["temp"], z["action"])
 
             if z["action"] == "heating":
                 zone_riscaldamento.append(z["nome"])
@@ -375,12 +392,12 @@ class Climaoro(hass.Hass):
 
             if not self._comando_sicuro_per_stanza(
                 z["stanza"], z["stanza"]["entities"].get("clima"),
-                "climate/set_temperature", {"temperature": guardia}, z["nome"]
+                "climate/set_temperature", {"temperature": setpoint_off}, z["nome"]
             ):
                 continue
-            self.log("Stanza %s: setpoint allineato a guardia (%.1f C).", z["nome"], guardia)
+            self.log("Stanza %s: setpoint allineato allo spegnimento (%.1f C).", z["nome"], setpoint_off)
 
-            if z["temp"] <= z["t_salvata"] - 0.5:
+            if z["temp"] <= soglia_on:
                 lista_richieste.append(z["nome"])
                 eid_peso = (z["stanza"].get("entities") or {}).get("peso")
                 peso = self._float_safe(self.get_state(eid_peso), 0.0) if eid_peso else 0.0
@@ -400,10 +417,10 @@ class Climaoro(hass.Hass):
             for z in zone_ok:
                 if z["action"] == "heating":
                     continue
-                guardia = z["t_salvata"] - delta
-                if z["temp"] <= guardia - 0.4:
-                    self.log("Emergenza stanza %s: %.1f <= %.1f", z["nome"], z["temp"], guardia - 0.4)
-                    self._accendi_stanza(gruppo, z["nome"], delta)
+                soglia_on = z["t_salvata"] + delta_acc
+                if z["temp"] <= soglia_on - 0.4:
+                    self.log("Emergenza stanza %s: %.1f <= %.1f", z["nome"], z["temp"], soglia_on - 0.4)
+                    self._accendi_stanza(gruppo, z["nome"])
 
     def _accendi_stanza(self, gruppo, nome):
         stanza = self._stanza_by_name(gruppo, nome)
@@ -414,10 +431,13 @@ class Climaoro(hass.Hass):
         if t_salvata is None:
             self.log("ERRORE: Stanza %s: temp_salvata mancante - accensione saltata.", nome, level="ERROR")
             return
-        lavoro = t_salvata
+        delta_acc = self._delta_gruppo(gruppo, "accensione")
+        if delta_acc is None:
+            return
+        setpoint_on = t_salvata + delta_acc + 0.5
         self._comando_sicuro_per_stanza(
             stanza, e.get("clima"), "climate/set_temperature",
-            {"temperature": lavoro}, nome
+            {"temperature": setpoint_on}, nome
         )
 
     def _stanza_by_name(self, gruppo, nome):

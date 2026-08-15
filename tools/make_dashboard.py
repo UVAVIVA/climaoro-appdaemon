@@ -64,8 +64,10 @@ def build_dashboard(cfg: dict) -> dict:
                     "type": "entities",
                     "title": f"{prefix}Gruppo {label}",
                     "entities": [
-                        {"entity": gent.get("delta_comfort"), "name": "Delta comfort"},
-                        {"entity": gent.get("delta_eco"), "name": "Delta eco"},
+                        {"entity": gent.get("delta_accensione_comfort"), "name": "Delta comfort accensione"},
+                        {"entity": gent.get("delta_accensione_eco"), "name": "Delta eco accensione"},
+                        {"entity": gent.get("delta_spegnimento_comfort"), "name": "Delta comfort spegnimento"},
+                        {"entity": gent.get("delta_spegnimento_eco"), "name": "Delta eco spegnimento"},
                         {"entity": gent.get("calendario"), "name": "Calendario"},
                     ],
                 },

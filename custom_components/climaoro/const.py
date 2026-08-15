@@ -45,6 +45,10 @@ CONF_SOGLIA_PESI: Final = "soglia_pesi"
 
 CONF_DELTA_COMFORT: Final = "delta_comfort"
 CONF_DELTA_ECO: Final = "delta_eco"
+CONF_DELTA_ACCENSIONE_COMFORT: Final = "delta_accensione_comfort"
+CONF_DELTA_ACCENSIONE_ECO: Final = "delta_accensione_eco"
+CONF_DELTA_SPEGNIMENTO_COMFORT: Final = "delta_spegnimento_comfort"
+CONF_DELTA_SPEGNIMENTO_ECO: Final = "delta_spegnimento_eco"
 CONF_CALENDAR: Final = "calendar"
 
 CONF_ID: Final = "id"
@@ -82,17 +86,25 @@ DAY_LABELS: Final = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"]
 # Default.
 DEFAULT_ATTIVO: Final = True
 DEFAULT_SOGLIA_PESI: Final = 5.0
-DEFAULT_DELTA_COMFORT: Final = 0.5
-DEFAULT_DELTA_ECO: Final = 1.0
+DEFAULT_DELTA_ACCENSIONE_COMFORT: Final = -0.5
+DEFAULT_DELTA_ACCENSIONE_ECO: Final = -1.0
+DEFAULT_DELTA_SPEGNIMENTO_COMFORT: Final = 0.0
+DEFAULT_DELTA_SPEGNIMENTO_ECO: Final = 0.0
 DEFAULT_PESO: Final = 1.0
 DEFAULT_INCLUSIONE: Final = True
 
 # Limiti helper.
-# I delta (eco/comfort) si SOTTRAGGONO sempre a temp_salvata per
-# definire la guardia; il tetto di riscaldamento resta temp_salvata.
-DELTA_MIN: Final = 0.0
-DELTA_COMFORT_MAX: Final = 1.0
-DELTA_ECO_MAX: Final = 2.0
+# I delta si SOMMANO a temp_salvata (temp_salvata = tetto di comfort):
+#   - accensione: il clima si accende a temp_salvata + delta_accensione
+#   - spegnimento: il clima si spegne a temp_salvata + delta_spegnimento
+DELTA_ACCENSIONE_COMFORT_MIN: Final = -1.0
+DELTA_ACCENSIONE_COMFORT_MAX: Final = 1.0
+DELTA_ACCENSIONE_ECO_MIN: Final = -2.0
+DELTA_ACCENSIONE_ECO_MAX: Final = 0.0
+DELTA_SPEGNIMENTO_COMFORT_MIN: Final = -0.5
+DELTA_SPEGNIMENTO_COMFORT_MAX: Final = 0.5
+DELTA_SPEGNIMENTO_ECO_MIN: Final = -1.0
+DELTA_SPEGNIMENTO_ECO_MAX: Final = 0.0
 DELTA_STEP: Final = 0.1
 SOGLIA_MIN: Final = 0.0
 SOGLIA_MAX: Final = 20.0
@@ -111,8 +123,10 @@ def default_groups(gruppi_attivi: list[str]) -> dict[str, dict]:
     """Gruppi con delta e calendario di default."""
     return {
         g: {
-            "delta_comfort": DEFAULT_DELTA_COMFORT,
-            "delta_eco": DEFAULT_DELTA_ECO,
+            CONF_DELTA_ACCENSIONE_COMFORT: DEFAULT_DELTA_ACCENSIONE_COMFORT,
+            CONF_DELTA_ACCENSIONE_ECO: DEFAULT_DELTA_ACCENSIONE_ECO,
+            CONF_DELTA_SPEGNIMENTO_COMFORT: DEFAULT_DELTA_SPEGNIMENTO_COMFORT,
+            CONF_DELTA_SPEGNIMENTO_ECO: DEFAULT_DELTA_SPEGNIMENTO_ECO,
             CONF_CALENDAR: default_calendar(g),
         }
         for g in GROUPS
@@ -185,14 +199,17 @@ def entity_name_prefix(appartamento: str, nome: str) -> str:
 
 
 def migrate_options(options: dict) -> dict:
-    """Porta le options al formato multi-appartamento (idempotente).
+    """Porta le options al formato corrente (idempotente).
 
-    Da: {attivo, soglia_pesi, groups, rooms}
-    A:  {appartamenti: [{id, nome, attivo, soglia_pesi, groups}, ...], rooms}
-    Le stanze ricevono il campo 'appartamento' (default 'casa').
+    - multi-appartamento: {appartamenti: [...], rooms}
+    - delta rinominati: i vecchi delta (sottrattivi, delta_comfort/delta_eco)
+      diventano delta_accensione (additivi, valore negato) e vengono
+      aggiunti i nuovi delta_spegnimento con i default.
     """
+    options = copy.deepcopy(dict(options))
+
     if CONF_APPARTAMENTI in options:
-        return options
+        return _migrate_deltas(options)
 
     groups = options.get(CONF_GROUPS, {})
     apps = []
@@ -213,4 +230,19 @@ def migrate_options(options: dict) -> dict:
         rr.setdefault(CONF_APPARTAMENTO, APPARTAMENTO_CASA)
         rooms.append(rr)
 
-    return {CONF_APPARTAMENTI: apps, CONF_ROOMS: rooms}
+    return _migrate_deltas({CONF_APPARTAMENTI: apps, CONF_ROOMS: rooms})
+
+
+def _migrate_deltas(options: dict) -> dict:
+    """Converte i delta sottrattivi nei nuovi delta accensione/spegnimento."""
+    for ap in options.get(CONF_APPARTAMENTI, []):
+        for g in ap.get(CONF_GROUPS, {}).values():
+            if CONF_DELTA_COMFORT in g and CONF_DELTA_ACCENSIONE_COMFORT not in g:
+                g[CONF_DELTA_ACCENSIONE_COMFORT] = -float(g.pop(CONF_DELTA_COMFORT))
+            if CONF_DELTA_ECO in g and CONF_DELTA_ACCENSIONE_ECO not in g:
+                g[CONF_DELTA_ACCENSIONE_ECO] = -float(g.pop(CONF_DELTA_ECO))
+            g.setdefault(
+                CONF_DELTA_SPEGNIMENTO_COMFORT, DEFAULT_DELTA_SPEGNIMENTO_COMFORT
+            )
+            g.setdefault(CONF_DELTA_SPEGNIMENTO_ECO, DEFAULT_DELTA_SPEGNIMENTO_ECO)
+    return options

@@ -29,8 +29,6 @@ from .const import (
     APPARTAMENTO_CASA,
     CONF_ATTIVO,
     CONF_CLIMA,
-    CONF_DELTA_COMFORT,
-    CONF_DELTA_ECO,
     CONF_INCLUSIONE,
     CONF_MODALITA,
     CONF_NOME,
@@ -48,7 +46,7 @@ DASHBOARD_TITLE = "Climaoro"
 # URL della card. La query "?v=" e' un CACHE-BUSTER: HA serve /local
 # con max-age ~31gg (niente ETag), quindi a ogni modifica del JS va
 # INCREMENTATO il numero per forzare il ricaricamento nei browser.
-CARD_URL = "/local/climaoro/climaoro-calendario.js?v=4"
+CARD_URL = "/local/climaoro/climaoro-calendario.js?v=5"
 APPS_DIR = "apps"
 APPS_YAML = "apps.yaml"
 APP_FILE = "climaoro.py"
@@ -267,13 +265,15 @@ def build_dashboard_config(cfg: dict) -> dict:
         for gruppo in ap.get("gruppi", []):
             gent = gruppo.get("entities", {})
             label = gruppo.get("label", gruppo.get("id"))
-            cards = [
+            gruppo_cards = [
                 {
                     "type": "entities",
                     "title": f"{prefix}Gruppo {label}",
                     "entities": [
-                        {"entity": gent.get("delta_comfort"), "name": "Delta comfort"},
-                        {"entity": gent.get("delta_eco"), "name": "Delta eco"},
+                        {"entity": gent.get("delta_accensione_comfort"), "name": "Delta comfort accensione"},
+                        {"entity": gent.get("delta_accensione_eco"), "name": "Delta eco accensione"},
+                        {"entity": gent.get("delta_spegnimento_comfort"), "name": "Delta comfort spegnimento"},
+                        {"entity": gent.get("delta_spegnimento_eco"), "name": "Delta eco spegnimento"},
                         {"entity": gent.get("calendario"), "name": "Calendario"},
                     ],
                 },
@@ -285,6 +285,7 @@ def build_dashboard_config(cfg: dict) -> dict:
                     "entity": gent.get("calendario"),
                 },
             ]
+            stanza_cards = []
             for stanza in gruppo.get("stanze", []):
                 ent = stanza.get("entities", {})
                 stanza_entities = [
@@ -295,11 +296,24 @@ def build_dashboard_config(cfg: dict) -> dict:
                     {"entity": ent.get("modalita"), "name": "Modalita centralizzata"},
                     {"entity": ent.get("rinnovo"), "name": "Rinnova modalita"},
                 ]
-                cards.append(
+                stanza_cards.append(
                     {
                         "type": "entities",
                         "title": f"{prefix}{label} · {stanza.get('nome')}",
                         "entities": [e for e in stanza_entities if e.get("entity")],
+                    }
+                )
+            cards = [
+                {
+                    "type": "vertical-stack",
+                    "cards": gruppo_cards,
+                }
+            ]
+            if stanza_cards:
+                cards.append(
+                    {
+                        "type": "vertical-stack",
+                        "cards": stanza_cards,
                     }
                 )
             views.append(

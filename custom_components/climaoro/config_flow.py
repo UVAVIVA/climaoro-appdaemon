@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 from homeassistant import config_entries
@@ -21,8 +22,10 @@ from .const import (
     CONF_ATTIVO,
     CONF_CLIMA,
     CONF_CLIMA_UID,
-    CONF_DELTA_COMFORT,
-    CONF_DELTA_ECO,
+    CONF_DELTA_ACCENSIONE_COMFORT,
+    CONF_DELTA_ACCENSIONE_ECO,
+    CONF_DELTA_SPEGNIMENTO_COMFORT,
+    CONF_DELTA_SPEGNIMENTO_ECO,
     CONF_GRUPPO,
     CONF_ID,
     CONF_INCLUSIONE,
@@ -37,14 +40,21 @@ from .const import (
     CONF_TEMP_SALVATA,
     CONF_TEMP_SALVATA_UID,
     DEFAULT_ATTIVO,
-    DEFAULT_DELTA_COMFORT,
-    DEFAULT_DELTA_ECO,
+    DEFAULT_DELTA_ACCENSIONE_COMFORT,
+    DEFAULT_DELTA_ACCENSIONE_ECO,
+    DEFAULT_DELTA_SPEGNIMENTO_COMFORT,
+    DEFAULT_DELTA_SPEGNIMENTO_ECO,
     DEFAULT_INCLUSIONE,
     DEFAULT_PESO,
     DEFAULT_SOGLIA_PESI,
-    DELTA_COMFORT_MAX,
-    DELTA_ECO_MAX,
-    DELTA_MIN,
+    DELTA_ACCENSIONE_COMFORT_MAX,
+    DELTA_ACCENSIONE_COMFORT_MIN,
+    DELTA_ACCENSIONE_ECO_MAX,
+    DELTA_ACCENSIONE_ECO_MIN,
+    DELTA_SPEGNIMENTO_COMFORT_MAX,
+    DELTA_SPEGNIMENTO_COMFORT_MIN,
+    DELTA_SPEGNIMENTO_ECO_MAX,
+    DELTA_SPEGNIMENTO_ECO_MIN,
     DELTA_STEP,
     DOMAIN,
     GROUP_LABELS,
@@ -370,7 +380,7 @@ class ClimaoroOptionsFlow(config_entries.OptionsFlow):
     def __init__(self, entry: config_entries.ConfigEntry) -> None:
         """Init."""
         self._entry = entry
-        self._data = migrate_options(dict(entry.options))
+        self._data = migrate_options(copy.deepcopy(dict(entry.options)))
         self._edit_room_id: str | None = None
         self._app_id: str | None = None
         self._target: str | None = None
@@ -604,8 +614,10 @@ class ClimaoroOptionsFlow(config_entries.OptionsFlow):
         groups = ap.get(CONF_GROUPS, {})
         if user_input is not None:
             g = dict(groups.get(user_input["_gruppo"], {}))
-            g[CONF_DELTA_COMFORT] = user_input[CONF_DELTA_COMFORT]
-            g[CONF_DELTA_ECO] = user_input[CONF_DELTA_ECO]
+            g[CONF_DELTA_ACCENSIONE_COMFORT] = user_input[CONF_DELTA_ACCENSIONE_COMFORT]
+            g[CONF_DELTA_ACCENSIONE_ECO] = user_input[CONF_DELTA_ACCENSIONE_ECO]
+            g[CONF_DELTA_SPEGNIMENTO_COMFORT] = user_input[CONF_DELTA_SPEGNIMENTO_COMFORT]
+            g[CONF_DELTA_SPEGNIMENTO_ECO] = user_input[CONF_DELTA_SPEGNIMENTO_ECO]
             groups[user_input["_gruppo"]] = g
             ap[CONF_GROUPS] = groups
             self._save_ap(ap)
@@ -614,12 +626,22 @@ class ClimaoroOptionsFlow(config_entries.OptionsFlow):
         g = groups.get(gruppo, {})
         schema = {
             vol.Required("_gruppo", default=gruppo): str,
-            vol.Required(CONF_DELTA_COMFORT, default=g.get(CONF_DELTA_COMFORT, DEFAULT_DELTA_COMFORT)): _numero(
-                DELTA_MIN, DELTA_COMFORT_MAX, DELTA_STEP
-            ),
-            vol.Required(CONF_DELTA_ECO, default=g.get(CONF_DELTA_ECO, DEFAULT_DELTA_ECO)): _numero(
-                DELTA_MIN, DELTA_ECO_MAX, DELTA_STEP
-            ),
+            vol.Required(
+                CONF_DELTA_ACCENSIONE_COMFORT,
+                default=g.get(CONF_DELTA_ACCENSIONE_COMFORT, DEFAULT_DELTA_ACCENSIONE_COMFORT),
+            ): _numero(DELTA_ACCENSIONE_COMFORT_MIN, DELTA_ACCENSIONE_COMFORT_MAX, DELTA_STEP),
+            vol.Required(
+                CONF_DELTA_ACCENSIONE_ECO,
+                default=g.get(CONF_DELTA_ACCENSIONE_ECO, DEFAULT_DELTA_ACCENSIONE_ECO),
+            ): _numero(DELTA_ACCENSIONE_ECO_MIN, DELTA_ACCENSIONE_ECO_MAX, DELTA_STEP),
+            vol.Required(
+                CONF_DELTA_SPEGNIMENTO_COMFORT,
+                default=g.get(CONF_DELTA_SPEGNIMENTO_COMFORT, DEFAULT_DELTA_SPEGNIMENTO_COMFORT),
+            ): _numero(DELTA_SPEGNIMENTO_COMFORT_MIN, DELTA_SPEGNIMENTO_COMFORT_MAX, DELTA_STEP),
+            vol.Required(
+                CONF_DELTA_SPEGNIMENTO_ECO,
+                default=g.get(CONF_DELTA_SPEGNIMENTO_ECO, DEFAULT_DELTA_SPEGNIMENTO_ECO),
+            ): _numero(DELTA_SPEGNIMENTO_ECO_MIN, DELTA_SPEGNIMENTO_ECO_MAX, DELTA_STEP),
         }
         return self.async_show_form(
             step_id="edit_group",

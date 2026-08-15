@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 from homeassistant import config_entries
@@ -60,7 +61,7 @@ class Attivo(_SwitchEntityBase):
         return bool(ap.get(CONF_ATTIVO))
 
     async def _set(self, value: bool) -> None:
-        options = dict(self._entry.options)
+        options = copy.deepcopy(dict(self._entry.options))
         appartamenti = list(options.get(CONF_APPARTAMENTI, []))
         for ap in appartamenti:
             if ap.get(CONF_ID) == self._app_id:
@@ -99,7 +100,7 @@ class InclusioneStanza(_SwitchEntityBase):
         return None
 
     async def _set(self, value: bool) -> None:
-        options = dict(self._entry.options)
+        options = copy.deepcopy(dict(self._entry.options))
         rooms = list(options.get(CONF_ROOMS, []))
         for room in rooms:
             if room.get("id") == self._room_id:

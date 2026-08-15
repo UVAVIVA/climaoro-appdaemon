@@ -219,7 +219,62 @@ emergenza individuale).
         calendari di casa conservati, appartamento senza stanze), app AppDaemon
         "Config runtime caricata (2 appartamenti, 32 entita')" e cicli
         separati per master (casa/appartamento).
-
+[12/08 notte] BUG FIX: MODIFICHE NUMBER/SWITCH NON PERSISTITE SU DISCO
+        (delta/soglie/pesi/inclusioni tornavano ai default a ogni riavvio).
+        SINTOMO: il valore cambiava subito in UI e in /api/climaoro/config
+        ma .storage/core.config_entries restava INVARIATO (mtime congelato
+        ore, anche per entry appena create) e al riavvio si tornava ai
+        default. Altri .storage (auth/restore_state) si scrivevano ok.
+        CAUSA RADICE (dimostrata con logging strumentato): tutte le
+        modifiche facevano SHALLOW COPY delle options:
+          options = dict(self._entry.options)
+        Gli oggetti annidati (appartamenti -> groups -> gruppi) restavano
+        CONDIVISI con entry.options: mutandoli si aggiornava entry.options
+        IN MEMORIA (per questo la UI lo vedeva), ma al confronto
+        config_entries.async_update_entry rilevava entry.options == options
+        (stesse liste) -> changed=False (ret=False dal log) -> NESSUN save
+        schedulato -> mai scritto su disco, senza errori. In piu', su HA
+        2026.8 entry.options e' un mappingproxy: copy.deepcopy diretto
+        fallisce con "cannot pickle 'mappingproxy' object".
+        FIX: deepcopy del dict reale in TUTTI i punti che mutano le options:
+          options = copy.deepcopy(dict(self._entry.options))
+        Applicato in number.py (soglia_pesi, delta, peso), switch.py
+        (attivo, inclusione), __init__.py (async_update_group_calendar),
+        config_flow.py (ClimaoroOptionsFlow). Aggiunto import copy.
+        VERIFICATO end-to-end sulla VM: set delta_eco=1.37 -> valore su
+        disco (tr ',' '\n' grep delta_eco -> 1.37 presente) e mtime
+        aggiornato; dopo "ha core restart" il valore PERSISTE (riletto
+        correttamente). Strumentazione CLIMAORO_DBG rimossa dopo il fix.
++[15/08] DEPLOY MODELLO DELTA NUOVO + PANNELLO + CARD CALENDARIO.
++        - IP FISSO VM: 192.168.1.197/24 (gw 192.168.1.1) su enp0s3:
++            ha network update enp0s3 --ipv4-address 192.168.1.197/24 \
++              --ipv4-gateway 192.168.1.1 --ipv4-nameserver 192.168.1.1
++          HA raggiungibile su http://192.168.1.197/ (porta 80 in LAN).
++        - FIX mappingproxy in const.py (riga ~209):
++            options = copy.deepcopy(dict(options))  (era copy.deepcopy(options)
++          su mappingproxy -> errore 500 in /api/climaoro/config).
++        - NUOVO MODELLO DELTA distribuito: delta_accensione_comfort/eco
++          (range -1..1 / -2..0, ora si SOMMANO) e delta_spegnimento_
++          comfort/eco (-0.5..0.5 / -1..0); migrazione automatica in
++          migrate_options (vecchi delta negati -> accensione) VERIFICATA
++          sulla VM (giorno eco +1.37 -> -1.37). Entita' delta_spegnimento
++          create (12, tutte le viste) e log pulito (0 errori climaoro).
++        - NOMI ENTITA': richiesto ordine "Delta comfort accensione" /
++          "Delta eco accensione" / "Delta comfort spegnimento" /
++          "Delta eco spegnimento" (accensione/spegnimento in terza
++          posizione). Applicato in number.py (etichette DELTA_CAMPI),
++          translations/it.json+en.json, provision.py, make_dashboard.py.
++        - PANNELLO (impaginazione): layout MASONRY con due vertical-stack
++          per ogni gruppo: [Gruppo + Calendario] in una colonna e i
++          dispositivi delle stanze nell'altra. Risolto il problema delle
++          card a 1/4 (il layout sections affianca le sezioni con max_columns
++          4 e limita ogni colonna a ~500px). Servizio climaoro.provisiona
++          riesegue il provisioning completo.
++        - CARD CALENDARIO: tabella a tutta larghezza (table-layout fixed,
++          colgroup ora=38px) con caratteri piu' grandi (titolo 17px,
++          giorni/ore 13px, celle 14px bold alte 26px). Cache-buster
++          CARD_URL portato a ?v=5.
+ 
 -----------------------------------------------------------------------
 4. PUNTI APERTI / DA DEFINIRE
 -----------------------------------------------------------------------
@@ -233,6 +288,48 @@ emergenza individuale).
   riferimento, non più usati.
 - L'addon AppDaemon non ha il plugin V3 con supporto completo alle
   entity: l'app usa get_state/call_service via namespace HASS, ok.
+
+-----------------------------------------------------------------------
+4bis. NOTE PER DOMANI (13/08) - NUOVO MODELLO DELTA (DA IMPLEMENTARE)
+-----------------------------------------------------------------------
+Obiettivo: separare i delta di ACCENSIONE da quelli di SPEGNIMENTO e
+cambiare la semantica del segno.
+
+STATO OGGI (deltas unici, sempre sottratti):
+- Ogni gruppo ha un solo delta_comfort (0..1) e un solo delta_eco (0..2).
+- Guardia = temp_salvata - delta (delta positivo, si SOTTRAE).
+- Il tetto resta temp_salvata.
+- Intervengono SOLO sull'accensione.
+
+MODELLO NUOVO (richiesto):
+- I DELTA ACCENSIONE SOSTITUISCONO QUELLI ATTUALI. Prima erano sempre
+  positivi e si SOTTRAEVANO (guardia = temp_salvata - delta). Ora possono
+  essere NEGATIVI O POSITIVI e si SOMMANO: guardia = temp_salvata + delta
+  (es. delta = -1, temp_salvata = 20 -> guardia 19). Intervengono come
+  oggi sull'ACCENSIONE.
+  * delta accensione comfort: range -1 .. +1
+  * delta accensione eco:     range -2 .. 0
+- RINOMINARE i delta attuali in "delta accensione comfort" e
+  "delta accensione eco" (entità/options: delta_accensione_*).
+- CREARE i nuovi "delta spegnimento comfort" e "delta spegnimento eco"
+  (entità/options: delta_spegnimento_*). STESSO PRINCIPIO dei delta
+  accensione: possono essere negativi o positivi e si SOMMANO a
+  temp_salvata (guardia spegnimento = temp_salvata + delta), ma si
+  utilizzano per lo SPEGNIMENTO.
+  * delta spegnimento comfort: -0.5 .. +0.5
+  * delta spegnimento eco:     -1 .. 0
+
+COSE DA VERIFICARE/STABILIRE:
+- Semantica esatta dell'app: con delta che si somma, guardia/tetto
+  cambiano (temp_salvata + delta?). Definire formula per accensione e
+  per spegnimento (ispegnimento tipicamente rispetta l'isteresi).
+- Dove applicare: const.py (nuove costanti/intervalli),
+  number.py (entità delta accensione + spegnimento per gruppo e per
+  appartamento), config_flow.py (wizard), appdaemon_app/climaoro.py
+  (logica accensione/spegnimento), pannello (card gruppo).
+- Aggiornare PERCORSO.txt sez. 5 con l'esito dopo il deploy su VM
+  (ricordarsi: dopo modifica del componente serve "ha core restart" e
+  ri-login con ha_relogin.py).
 
 -----------------------------------------------------------------------
 5. STATO ATTUALE (11/08 - VERIFICATO END-TO-END)
@@ -347,5 +444,23 @@ emergenza individuale).
     (2 appartamenti, 32 entita', app AppDaemon aggiornata). Prossimo:
     assegnare le stanze all'appartamento 2 e configurare i suoi master/
     delta/calendari (i gruppi partono come copie della casa).
+12. (FATTO 12/08 notte) FIX PERSISTENZA OPTIONS: deepcopy delle options
+    prima di ogni modifica (number/switch/calendar/options flow) - vedi
+    sez. 3 [12/08 notte]. Da ridistribuire su VM dopo eventuali pull del
+    repo. Nessun passaggio aperto.
+13. (FATTO 15/08) NUOVO MODELLO DELTA: rinominati i delta attuali in
+    "delta accensione comfort/eco" (range comfort -1..1, eco -2..0, ora
+    si SOMMANO a temp_salvata) e creati i nuovi "delta spegnimento
+    comfort/eco" (comfort -0.5..0.5, eco -1..0) che intervengono sullo
+    spegnimento. Migrazione automatica (mappingproxy fix incluso) e
+    logica app aggiornata (soglia_on/setpoint_on e soglia_off/
+    setpoint_off). Deploy su VM verificato - vedi sez. 3 [15/08].
+14. (FATTO 15/08) PANNELLO E CARD: impaginazione masonry con due
+    vertical-stack per gruppo (Gruppo+Calendario | dispositivi) e card
+    calendario a tutta larghezza con caratteri piu' grandi (?v=5).
+    Deploy su VM e provisioning verificati - vedi sez. 3 [15/08].
+15. (PROSSIMO) Commit + push su GitHub di tutte le modifiche non ancora
+    pubblicate (modello delta, deepcopy/persistenza, pannello, card).
+    RIMANE DA DECIDERE: repo pubblico per HACS o privato.
 
 =======================================================================

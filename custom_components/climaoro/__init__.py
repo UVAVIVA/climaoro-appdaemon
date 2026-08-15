@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 from pathlib import Path
 from typing import Any
@@ -22,8 +23,10 @@ from .const import (
     CONF_CALENDAR,
     CONF_CLIMA,
     CONF_CLIMA_UID,
-    CONF_DELTA_COMFORT,
-    CONF_DELTA_ECO,
+    CONF_DELTA_ACCENSIONE_COMFORT,
+    CONF_DELTA_ACCENSIONE_ECO,
+    CONF_DELTA_SPEGNIMENTO_COMFORT,
+    CONF_DELTA_SPEGNIMENTO_ECO,
     CONF_GROUPS,
     CONF_GRUPPO,
     CONF_ID,
@@ -188,12 +191,24 @@ async def build_runtime_config(hass: HomeAssistant) -> dict[str, Any]:
                 {
                     "id": gruppo,
                     "label": GROUP_LABELS.get(gruppo, gruppo),
-                    CONF_DELTA_COMFORT: group.get(CONF_DELTA_COMFORT),
-                    CONF_DELTA_ECO: group.get(CONF_DELTA_ECO),
+                    CONF_DELTA_ACCENSIONE_COMFORT: group.get(CONF_DELTA_ACCENSIONE_COMFORT),
+                    CONF_DELTA_ACCENSIONE_ECO: group.get(CONF_DELTA_ACCENSIONE_ECO),
+                    CONF_DELTA_SPEGNIMENTO_COMFORT: group.get(CONF_DELTA_SPEGNIMENTO_COMFORT),
+                    CONF_DELTA_SPEGNIMENTO_ECO: group.get(CONF_DELTA_SPEGNIMENTO_ECO),
                     CONF_CALENDAR: group.get(CONF_CALENDAR),
                     "entities": {
-                        CONF_DELTA_COMFORT: eid(entity_uid(ap_id, "delta", gruppo, CONF_DELTA_COMFORT)),
-                        CONF_DELTA_ECO: eid(entity_uid(ap_id, "delta", gruppo, CONF_DELTA_ECO)),
+                        CONF_DELTA_ACCENSIONE_COMFORT: eid(
+                            entity_uid(ap_id, "delta", gruppo, "delta_comfort")
+                        ),
+                        CONF_DELTA_ACCENSIONE_ECO: eid(
+                            entity_uid(ap_id, "delta", gruppo, "delta_eco")
+                        ),
+                        CONF_DELTA_SPEGNIMENTO_COMFORT: eid(
+                            entity_uid(ap_id, "delta", gruppo, CONF_DELTA_SPEGNIMENTO_COMFORT)
+                        ),
+                        CONF_DELTA_SPEGNIMENTO_ECO: eid(
+                            entity_uid(ap_id, "delta", gruppo, CONF_DELTA_SPEGNIMENTO_ECO)
+                        ),
                         "calendario": eid(entity_uid(ap_id, "calendario", gruppo)),
                     },
                     "stanze": stanze,
@@ -320,7 +335,7 @@ def async_update_group_calendar(
     calendario: dict[str, list[str]],
 ) -> None:
     """Salva il calendario di un gruppo (di un appartamento) nella config entry."""
-    options = dict(entry.options)
+    options = copy.deepcopy(dict(entry.options))
     appartamenti = list(options.get(CONF_APPARTAMENTI, []))
     for ap in appartamenti:
         if ap.get(CONF_ID) != app_id:
