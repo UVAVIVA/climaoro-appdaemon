@@ -4,7 +4,7 @@
 # dal tool tools/make_dashboard.py, che costruisce le card dagli
 # entity_id risolti da /api/climaoro/config (nessun entity_id hardcoded):
 #
-#   python tools/make_dashboard.py --url http://192.168.1.132:80 \
+#   python tools/make_dashboard.py --url http://192.168.1.100:80 \
 #       --token <long-lived-token>
 #
 # url_path: climaoro-panel (deve contenere un trattino). L'utente può

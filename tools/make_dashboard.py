@@ -5,7 +5,7 @@ La dashboard viene costruita dinamicamente dalla config runtime
 un'entita', basta rieseguire questo script.
 
 Uso:
-    python make_dashboard.py --url http://192.168.1.132:80 \
+    python make_dashboard.py --url http://192.168.1.100:80 \
         --token <long-lived-token> [--url-path climaoro-panel] [--title Climaoro]
 """
 
@@ -109,7 +109,7 @@ def build_dashboard(cfg: dict) -> dict:
 
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--url", required=True, help="URL base HA (es. http://192.168.1.132:80)")
+    parser.add_argument("--url", required=True, help="URL base HA (es. http://192.168.1.100:80)")
     parser.add_argument("--token", required=True, help="Token long-lived HA")
     parser.add_argument("--url-path", default="climaoro-panel", help="url_path dashboard (deve contenere un trattino)")
     parser.add_argument("--title", default="Climaoro", help="Titolo dashboard")

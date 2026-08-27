@@ -1,196 +1,168 @@
-# CLIMAORO - Integrazione HA (custom component + AppDaemon)
+# CLIMAORO — Integrazione Home Assistant
+**Modulo Custom Component + AppDaemon per la gestione centralizzata ed intelligente del riscaldamento su Home Assistant.**
 
-Gestione centralizzata del riscaldamento CLIMAORO per Home Assistant.
+---
 
-I termostati hanno autonomia locale (firmware). Questa integrazione
-permette la **gestione centralizzata**: una singola app AppDaemon legge
-le impostazioni (gruppi, calendari 7x24, delta, pesi) e pilota tutti i
-termostati collettivamente, disattivando di fatto la loro funzione
-autonoma quando serve.
+## Links
 
-**Nessun entity_id hardcoded**: tutto (app e pannello) risolve le
-entità dal registry HA tramite l'endpoint `/api/climaoro/config` che
-restituisce la struttura completa con gli entity_id correnti. Se l'utente
-rinomina un'entità, basta rileggere la config e tutto continua a
-funzionare (rename-proof).
+- **Sito web:** [https://UVAVIVA.github.io/CLIMAORO/](https://UVAVIVA.github.io/CLIMAORO/)
+- **Progetto principale:** [https://github.com/UVAVIVA/CLIMAORO](https://github.com/UVAVIVA/CLIMAORO)
+- **Componenti ESPHome:** [https://github.com/UVAVIVA/climaoro-components](https://github.com/UVAVIVA/climaoro-components)
+- **Codice sorgente:** [https://github.com/UVAVIVA/climaoro-appdaemon](https://github.com/UVAVIVA/climaoro-appdaemon)
 
-## Architettura
+---
+
+## L'Architettura
+
+L'integrazione CLIMAORO per Home Assistant permette di orchestrare e supervisionare l'intero impianto di riscaldamento radiante senza privare i singoli termostati della loro capacità di funzionamento autonomo a livello di firmware.
+
+L'elemento chiave dell'architettura è la natura **Rename-Proof**: nessun `entity_id` è codificato in modo rigido. L'integrazione e la componente AppDaemon risolvono dinamicamente l'albero dei dispositivi interrogando l'endpoint dedicato `/api/climaoro/config`. Se un'entità viene rinominata nel registro di Home Assistant, la configurazione si aggiorna automaticamente in tempo reale senza interrompere l'operatività del sistema.
+
+---
+
+## Componenti del Sistema
+
+L'integrazione si articola in tre parti principali:
+
+| Componente | Posizione | Ruolo e Funzione |
+| --- | --- | --- |
+| **Custom Component** | `custom_components/climaoro/` | Integrazione nativa HA. Offre il wizard di prima configurazione (*Config Flow*), gli endpoint REST/WebSocket per l'aggiornamento runtime e le entità di contorno (`switch`, `number`, `sensor`). |
+| **AppDaemon Engine** | `appdaemon/climaoro.py` | Il motore decisionale Python. Esegue l'algoritmo di regolazione, gestisce le priorità di gruppo, la matrice calendari e i tempi di rinnovo (*heartbeat*). |
+| **Pannello & Card 7x24** | `www/climaoro/` | Dashboard dedicata (`/climaoro-panel`) con vista multi-pagina e la card personalizzata `climaoro-calendario.js` per la gestione visuale delle fasce orarie. |
+
+---
+
+## Modello Dati e Struttura
+
+Il sistema è predisposto per la gestione indipendente di **due unità abitative** (*Casa* e *Appartamento*), strutturate in modo gerarchico:
+
+### 1. Stanze
+
+Ogni stanza è associata a un appartamento e a un gruppo specifico, definendo un proprio *peso* e uno stato di *inclusione*. Ogni termostato mappa 4 entità fondamentali:
+
+- `climate.<dev>_climatizzazione` — Gestione stato operativo e setpoint target.
+- `number.<dev>_temperatura_salvata` — Riferimento di base della stanza.
+- `switch.<dev>_modalita_centralizzata` — Abilitazione del controllo da parte del motore centralizzato.
+- `button.<dev>_rinnovo_modalita_centralizzata` — Pulsante di heartbeat per l'estensione del lease.
+
+### 2. Gruppi (Giorno / Notte / Servizi)
+
+Ciascun gruppo applica impostazioni omogenee per le stanze afferenti:
+
+- **4 Delta Termici**: Offset di accensione e spegnimento per le fasce *Comfort* ed *Eco* (sommati al valore `temp_salvata`).
+- **Calendario 7x24**: Matrice oraria settimanale per la selezione automatica della modalità (*Comfort*, *Eco*, *Autonomo*).
+
+### 3. Appartamenti
+
+Ogni appartamento dispone del proprio switch Master (`climaoro_attivo` / `climaoro_appartamento_attivo`) e della relativa soglia minima dei pesi per l'attivazione del generatore.
+
+<img src="images/00b52f18-fcd2-4f22-bc78-fc6dbafb9023.jpg" alt="CLIMAORO Integrazione 1" width="30%">
+
+<img src="images/48d5ad94-720a-4e18-af88-9c372f740eee.jpg" alt="CLIMAORO Integrazione 2" width="30%">
+
+---
+
+## Logica Decisionale & Sicurezza
+
+L'app AppDaemon valuta lo stato dell'impianto a intervalli regolari (default: 60 secondi):
 
 ```
-custom_components/climaoro/   Custom component HA
-  config_flow.py              Wizard con selettori entity
-  __init__.py                 Endpoint REST + websocket config runtime
-  number.py / switch.py / sensor.py   Entità di contorno
-appdaemon/
-  climaoro.py                 App AppDaemon generica (logica centralizzata)
-  apps.yaml                   Config app (solo ha_url + ha_token)
-ha_config/                    Esempi legacy (architettura v1)
-test/                         Esempi legacy di simulazione
-PERCORSO.txt                  Sintesi del progetto (leggere per primo)
+                       [ Ciclo di Controllo (60s) ]
+                                    │
+                                    ▼
+                      Fascia Oraria in Autonomo?
+                       ├── SI ──► Termostato gestito da Firmware
+                       └── NO ──► Calcolo Setpoint (Attesa / Lavoro)
+                                    │
+                                    ▼
+                       Soglia Richiesta Raggiunta?
+                   (Temp. Reale <= Temp. Salvata - 0.5°C)
+                                    │
+                  ┌─────────────────┴─────────────────┐
+                  ▼                                   ▼
+          Qualcuno Scalda?                    Pesi >= Soglia?
+           (action=heating)
+                  │                                   │
+         ┌────────┴────────┐                 ┌────────┴────────┐
+         ▼                 ▼                 ▼                 ▼
+     Accendi           Emergenza         Accendi           Emergenza
+    Richiedenti       Individuale       Richiedenti       Individuale
 ```
 
-### Modello
+### Algoritmo di Valutazione
 
-- **Stanze**: nome, **appartamento** di appartenenza, gruppo di
-  appartenenza, **peso** e **inclusione** (le uniche cose individuali) +
-  le 4 entità chiave del termostato:
-  - `climate.<dev>_climatizzazione`
-  - `number.<dev>_temperatura_salvata`
-  - `switch.<dev>_modalita_centralizzata`
-  - `button.<dev>_rinnovo_modalita_centralizzata`
-  (non c'è un limite fisso al numero di stanze, serve almeno una stanza)
-- **Gruppi** fissi GIORNO / NOTTE / SERVIZI (opzionali). Ogni gruppo di
-  ogni appartamento ha:
-  - 4 **delta** (accensione e spegnimento, per le 2 fasce comfort/eco),
-    che si **sommano** a `temp_salvata` per definire i setpoint
-  - un **calendario 7x24** con tendina `eco` / `comfort` / `autonomo`
-    (autonomo = i termostati del gruppo tornano al firmware)
-  - per la Casa: `number.climaoro_<gruppo>_delta_*` (accensione e
-    spegnimento per comfort/eco) e `sensor.climaoro_<gruppo>_calendario`
-  - per il secondo appartamento: `number.climaoro_appartamento_<gruppo>_delta_*`
-    e `sensor.climaoro_appartamento_<gruppo>_calendario`
-- **Appartamenti**: l'integrazione gestisce 2 unità indipendenti
-  (Casa + Appartamento). Ogni appartamento ha il proprio **Globale**
-  (master `switch.climaoro_attivo` / `switch.climaoro_appartamento_attivo`
-  + `number.climaoro_soglia_pesi` / `number.climaoro_appartamento_soglia_pesi`)
-  e **proprie copie** dei gruppi (calendari/delta). La Casa conserva i
-  unique_id storici (`climaoro_attivo`, `climaoro_soglia_pesi`); il secondo
-  appartamento usa il prefisso `climaoro_appartamento_`. Ogni stanza
-  appartiene a un appartamento.
+1. **Calcolo Setpoint**:
+   - **Stato Attesa (spento)**: Setpoint = T_salvata + Delta_accensione
+   - **Stato Lavoro (acceso)**: Setpoint = T_salvata + Delta_spegnimento
 
-### Logica di controllo (app AppDaemon)
+2. **Identificazione Richieste**: Una stanza richiede calore quando T_reale <= T_salvata - 0.5°C.
 
-Ogni ciclo (60s), per ogni gruppo in fascia non-autonoma:
+3. **Cascata di Attivazione**:
+   - **Priorità Riscaldamento**: Se una stanza del gruppo è già attiva (`heating`), le altre richiedenti si accendono immediatamente.
+   - **Soglia Pesi**: Se la somma dei pesi richiedenti >= Soglia, scatta l'accensione collettiva del gruppo.
+   - **Emergenza Individuale**: Se T_reale <= T_salvata + Delta_accensione - 0.4°C, la stanza si accende singolarmente in modalità lavoro.
 
-1. Calcola i setpoint dalla fascia corrente:
-   - **attesa** (termostato spento): `setpoint = temp_salvata + delta_accensione`
-     (il termostato accende a `setpoint - 0.5`)
-   - **lavoro** (termostato acceso): `setpoint = temp_salvata + delta_spegnimento`
-     (il termostato spegne a `setpoint + 0.5`)
-2. Allinea il setpoint all'attesa e raccoglie le stanze in **richiesta**
-   (temp reale <= temp_salvata - 0.5, soglia indipendente dal delta
-   accensione), sommandone i pesi.
-3. Se qualche stanza è già in **riscaldamento** (`hvac_action=heating`):
-   priorità a lei, si accendono le richiedenti.
-4. Altrimenti, se **totale pesi >= soglia**: accensione collettiva
-   (tutte le richiedenti, scritto il setpoint di lavoro).
-5. Altrimenti **emergenza individuale**: stanza con temp <=
-   temp_salvata + delta_accensione - 0.4 (0.1 sopra l'accensione
-   autonoma del termostato) accesa a lavoro.
+### Protezione e Controllo Centralizzato
 
-Nota: i `delta_*` si **sommano** a temp_salvata (possono essere
-negativi o positivi). I delta di accensione definiscono quando il
-termostato parte da solo; i delta di spegnimento quando si spegne
-dopo un'accensione.
+- **Check Centralizzata**: Prima di inviare comandi ad un'entità `climate`, l'app verifica che `modalita_centralizzata` sia ON. In caso contrario la forza e ricontrolla (fino a 2 tentativi).
+- **Rinnovo Heartbeat**: Un timer periodico (default: 240s) preme il pulsante di rinnovo sui termostati per mantenere il controllo attivo.
+- **Ri-assert Automatico**: Ogni 1200s viene riconfermata la modalità centralizzata su tutti i termostati inclusi per recuperare da eventuali riavvii hardware dei dispositivi.
+- **Aggiornamento Istantaneo**: Qualsiasi variazione dei parametri da interfaccia scatena l'evento `climaoro_config_updated`, forzando l'aggiornamento immediato in AppDaemon senza attendere il refresh di background.
 
-Sicurezza e centralizzata:
-- Prima di un comando a un climate l'app verifica che lo
-  `switch.<dev>_modalita_centralizzata` sia attivo; se spento lo accende
-  e ricontrolla (max 2 tentativi), solo poi invia il comando.
-- Quando il master `switch.climaoro_attivo` passa su **ON**, l'app
-  attiva subito la modalità centralizzata di tutte le stanze incluse
-  (non in fascia `autonomo`). Allo spegnimento del master **non**
-  spegne nulla: basta che il rinnovo si fermi.
-- Un check periodico (default **20 min**, configurabile con
-  `check_centralizzata_sec`) ri-asserta la centralizzata se il master è
-  ancora ON (copre anche i riavvii dell'app con master già attivo).
-- Il timer di rinnovo (default 240s, `rinnovo_sec`) preme il pulsante
-  "rinnovo" delle stanze incluse (non in fascia autonoma); quando il
-  master è OFF il rinnovo resta fermo ("Rinnovo saltato: master spento").
+<img src="images/91745b8e-12b7-4d81-99e9-c87701b7c1f8.jpg" alt="CLIMAORO Integrazione 3" width="30%">
 
-## Installazione
+<img src="images/a965ce88-6679-4776-bdce-42e957b538df.jpg" alt="CLIMAORO Integrazione 4" width="30%">
 
-1. Copiare `custom_components/climaoro/` in `<config>/custom_components/`
-   e riavviare HA.
-2. **Aggiungi integrazione -> Climaoro**: il wizard guida nell'inserimento
-   delle entità chiave delle stanze; al termine crea le entità di contorno.
-3. Installare l'addon **AppDaemon**; copiare `appdaemon/climaoro.py` e
-   `appdaemon/apps.yaml` in `<addon_configs>/<id_appdaemon>/apps/`
-   (`<id_appdaemon>` è l'id dell'addon, es. `a0d7b954_appdaemon`).
-4. In `apps.yaml` impostare:
-   ```yaml
-   climaoro:
-     module: climaoro
-     class: Climaoro
-     ha_url: http://<ip-ha>:80
-     ha_token: <token long-lived HA>
-   ```
-   Se l'app gira nell'addon AppDaemon con il permesso
-   `homeassistant_api`, usa automaticamente il `SUPERVISOR_TOKEN`
-   (`ha_url: http://supervisor/core`) e il token non serve.
-5. Riavviare AppDaemon. Il pannello "Climaoro" è disponibile a
-   `/climaoro-panel`.
+---
 
-Configurabili in `apps.yaml` (oltre a `ha_url`/`ha_token`):
-`refresh_sec` (600), `cycle_sec` (60), `rinnovo_sec` (240),
-`check_centralizzata_sec` (1200).
+## Installazione e Configurazione
 
-## Pannello multi-vista
+### 1. Custom Component
 
-La dashboard "Climaoro" (url_path `climaoro-panel`) è organizzata in
-**viste separate** (una per pagina, in ordine nel menu laterale):
+1. Copiare la cartella `custom_components/climaoro/` all'interno della directory `<config>/custom_components/` del server Home Assistant.
+2. Riavviare Home Assistant.
+3. Completare la procedura guidata da **Impostazioni -> Dispositivi e Servizi -> Aggiungi Integrazione -> Climaoro**.
 
-- **Globale** (`globale`): master `climaoro_attivo` + soglia pesi.
-- Una vista per gruppo (`giorno`, `notte`, `servizi`): card gruppo
-  (delta comfort/eco + calendario), card calendario 7x24 e una card per
-  ogni stanza (climate, temp salvata, peso, inclusione, modalità, rinnovo).
+### 2. AppDaemon
 
-## Card calendario 7x24
+Copiare `appdaemon/climaoro.py` e `appdaemon/apps.yaml` all'interno della cartella dell'Add-on (`<addon_configs>/<id_appdaemon>/apps/`).
 
-La card `climaoro-calendario` (risorsa `/local/climaoro/climaoro-calendario.js`)
-mostra il calendario del gruppo con **righe = 24 ore** e **colonne = 7 giorni**
-(orientamento trasposto: ~250px, resta dentro la card senza scroll).
-Serve `gruppo` (giorno/notte/servizi) ed `entity` (il sensor
-`climaoro_<gruppo>_calendario`). Un click fa ciclare la cella
-eco -> comfort -> autonomo via `climaoro.set_calendario`.
+Esempio di configurazione `apps.yaml`:
 
-## Refresh configurazione immediato
+```yaml
+climaoro:
+  module: climaoro
+  class: Climaoro
+  ha_url: http://supervisor/core
+  cycle_sec: 60
+  rinnovo_sec: 240
+  check_centralizzata_sec: 1200
+  refresh_sec: 600
+```
 
-Quando cambiano le options (delta, peso, inclusione, attivo, calendario)
-l'integrazione emette l'evento `climaoro_config_updated`; l'app AppDaemon
-lo ascolta e rilegge subito `/api/climaoro/config`, senza attendere il
-refresh periodico (`refresh_sec` resta come fallback).
+---
 
-## Deploy su VM di test (HAOS su VirtualBox)
+## Licenza e Responsabilità
 
-- Avviare la VM: `VBoxManage startvm "Home Assistant" --type headless`.
-- Accesso SSH: `root@127.0.0.1:2222` (port-forward NAT verso porta 22)
-  con chiave `sshkeys/id_climaoro` (non committata nel repo).
-- Copiare la card aggiornata **in entrambe** le posizioni:
-  ```
-  scp -P 2222 .../www/climaoro-calendario.js root@127.0.0.1:/homeassistant/custom_components/climaoro/www/
-  scp -P 2222 .../www/climaoro-calendario.js root@127.0.0.1:/homeassistant/www/climaoro/
-  ```
-  La prima è la sorgente (ri-copiata su ogni setup), la seconda è la
-  risorsa servita da `/local/climaoro/climaoro-calendario.js`.
-- HTTP di verifica: `http://127.0.0.1:8080/local/climaoro/climaoro-calendario.js`
-  (il 8080 è il port-forward NAT verso la porta 80 di HA).
+**CLIMAORO © 2026 by UVAVIVA** · Licenza: **MIT con Condizione di Attribuzione**
 
-## Test senza dispositivi reali (HA virtuale)
+**Termini**
+- ✅ Attribuzione richiesta (nel codice e sui dispositivi commerciali)
+- ✅ Uso commerciale permesso (con attribuzione)
+- ✅ Modifiche e derivati permessi
+- ✅ Uso, copia, distribuzione e vendita permessi
 
-Il climate simulato su HA 2026.8 usa la piattaforma standard
-`generic_thermostat` (il template climate è stato rimosso da HA 2026.6):
+**Disclaimer**
+Questo progetto è fornito **così com'è**, a scopo educativo e sperimentale.
+- ⚠️ Non certificato per uso produttivo
+- ⚠️ ⚡ **PERICOLO: la gestione dell'impianto di riscaldamento deve essere eseguita solo da personale qualificato**
+- ⚠️ Nessuna garanzia di alcun tipo
+- ⚠️ L'utente si assume ogni rischio
 
-- `input_number`/`input_boolean`/`input_button` per temp salvata/attuale,
-  modalità, heater, rinnovo.
-- Template `number`/`sensor`/`switch`/`button` che replicano i nomi reali
-  dei termostati.
-- `climate: !include sim_climate.yaml` con `generic_thermostat`
-  (heater = input_boolean, target_sensor = sensor template).
+**Rispettare sempre le normative locali relative agli impianti termoidraulici.**
 
-Poi si manipolano i valori sim e si verificano i log dell'app (cicli,
-fascia, guardia/lavoro, priorità, soglia pesi, emergenza). Vedi
-`PERCORSO.txt` -> "STATO ATTUALE" per l'esito dei test end-to-end.
+**Sviluppato da:** [UVAVIVA](https://github.com/UVAVIVA)
 
-> Nota: sulla VM di produzione il simulatore è stato **rimosso**
-> (include `sim_*.yaml` tolti da `configuration.yaml` + entità pulite dal
-> registry) — i test si fanno in un'installazione separata o riattivando
-> gli include.
+---
 
-## Repository
-
-- `PERCORSO.txt`: sintesi aggiornata del progetto (obiettivo,
-  architettura, decisioni, stato, prossimi passi) - LEGGERE PRIMA.
-- `appdaemon/riscaldamento.py` e `generatore.py`: legacy architettura v1
-  (conservati come riferimento, non usati).
-- `test/simulazione.yaml` e `ha_config/`: esempi legacy.
+**Costruito con passione, dal nulla.**

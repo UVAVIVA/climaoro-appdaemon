@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
+
+# Percorso dati personali
+PERCORSO.txt
+
