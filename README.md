@@ -54,11 +54,7 @@ Ciascun gruppo applica impostazioni omogenee per le stanze afferenti:
 
 Ogni appartamento dispone del proprio switch Master (`climaoro_attivo` / `climaoro_appartamento_attivo`) e della relativa soglia minima dei pesi per l'attivazione del generatore.
 
-<img src="images/1db5527f-78d9-409d-a261-c671e4c6de2f.jpg" alt="CLIMAORO Integrazione 1" width="30%">
-
-<img src="images/33353339-64d9-4326-be92-56ce8b86829d.jpg" alt="CLIMAORO Integrazione 2" width="30%">
-
-<img src="images/981c700f-fcf9-4421-9e54-771fbd2c944b.jpg" alt="CLIMAORO Integrazione 3" width="30%">
+<img src="images/1db5527f-78d9-409d-a261-c671e4c6de2f.jpg" alt="CLIMAORO Integrazione 1" width="30%"> <img src="images/33353339-64d9-4326-be92-56ce8b86829d.jpg" alt="CLIMAORO Integrazione 2" width="30%"> <img src="images/981c700f-fcf9-4421-9e54-771fbd2c944b.jpg" alt="CLIMAORO Integrazione 3" width="30%">
 
 ---
 
@@ -109,9 +105,7 @@ L'app AppDaemon valuta lo stato dell'impianto a intervalli regolari (default: 60
 - **Ri-assert Automatico**: Ogni 1200s viene riconfermata la modalità centralizzata su tutti i termostati inclusi per recuperare da eventuali riavvii hardware dei dispositivi.
 - **Aggiornamento Istantaneo**: Qualsiasi variazione dei parametri da interfaccia scatena l'evento `climaoro_config_updated`, forzando l'aggiornamento immediato in AppDaemon senza attendere il refresh di background.
 
-<img src="images/9d1398b8-cd59-448f-8f3a-ae730ce09b0d.jpg" alt="CLIMAORO Integrazione 4" width="30%">
-
-<img src="images/ff26367c-6708-44a2-8128-43e8a244b778.jpg" alt="CLIMAORO Integrazione 5" width="30%">
+<img src="images/9d1398b8-cd59-448f-8f3a-ae730ce09b0d.jpg" alt="CLIMAORO Integrazione 4" width="30%"> <img src="images/ff26367c-6708-44a2-8128-43e8a244b778.jpg" alt="CLIMAORO Integrazione 5" width="30%">
 
 ---
 
@@ -119,15 +113,31 @@ L'app AppDaemon valuta lo stato dell'impianto a intervalli regolari (default: 60
 
 Il progetto si installa in un **unico passo**: il Custom Component. L'integrazione si occupa automaticamente di tutto il resto (file di configurazione di AppDaemon, token, dashboard e card del calendario).
 
-### 1. Prerequisito
+### 1. Prerequisito: Add-on AppDaemon
 
-Installare l'add-on **AppDaemon** da *Impostazioni -> Componenti aggiuntivi -> Add-on Store* in Home Assistant (obbligatorio: è il motore decisionale del sistema).
+Installare l'add-on **AppDaemon** (Home Assistant Community Add-ons) dall'**Add-on Store** di Home Assistant, tramite il seguente indirizzo:
 
-### 2. Custom Component
+```
+https://my.home-assistant.io/redirect/supervisor_addon/?addon=a0d7b954_appdaemon&repository_url=https%3A%2F%2Fgithub.com%2Fhassio-addons%2Frepository
+```
 
-1. Copiare la cartella `custom_components/climaoro/` all'interno della directory `<config>/custom_components/` del server Home Assistant.
-2. Riavviare Home Assistant.
-3. Completare la procedura guidata da **Impostazioni -> Dispositivi e Servizi -> Aggiungi Integrazione -> Climaoro**.
+In alternativa: *Impostazioni -> Componenti aggiuntivi -> Add-on Store* e cercare **AppDaemon** (repository Community Add-ons: `https://github.com/hassio-addons/repository`). È obbligatorio: è il motore decisionale del sistema.
+
+### 2. Custom Component (via HACS)
+
+Il custom component CLIMAORO si installa tramite **HACS** come repository personalizzato:
+
+1. In Home Assistant aprire **HACS -> Integrazioni**.
+2. Selezionare i tre puntini in alto a destra e scegliere **Custom repositories**.
+3. Inserire l'indirizzo del repository:
+   ```
+   https://github.com/UVAVIVA/climaoro-appdaemon
+   ```
+4. Selezionare la categoria **Integrazione** e cliccare **Add**.
+5. Trovare **ClimaORO** in HACS (sezione Integrazioni) e cliccare **Download**.
+6. **Riavviare Home Assistant**. (Il repository richiede di essere pubblico per essere scaricato da HACS.)
+
+Poi completare la procedura guidata da **Impostazioni -> Dispositivi e Servizi -> Aggiungi Integrazione -> Climaoro**.
 
 ### 3. Provisioning Automatico
 
