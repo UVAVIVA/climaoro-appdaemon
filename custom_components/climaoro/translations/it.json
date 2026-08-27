@@ -19,7 +19,7 @@
       },
       "add_room": {
         "title": "Aggiungi stanza",
-        "description": "Inserisci le entita' della stanza (come nelle automazioni).\n\n{riepilogo}",
+        "description": "Inserisci le entita' della stanza (come nelle automazioni). Se lasci vuoti Temperatura salvata, Modalita' centralizzata e Rinnovo, ClimaORO cerca da solo le entita' affini al termostato: assicurati che siano coerenti, altrimenti compila direttamente tutti i campi.\n\n{riepilogo}",
         "data": {
           "nome": "Nome stanza",
           "appartamento": "Appartamento",
@@ -69,6 +69,7 @@
       "nessun_gruppo": "Seleziona almeno un gruppo.",
       "nome_obbligatorio": "Il nome della stanza e' obbligatorio.",
       "nome_duplicato": "Esiste gia' una stanza con questo nome.",
+      "campi_mancanti": "Non tutte le entita' della stanza sono state trovate automaticamente. Compila manualmente Temperatura salvata, Modalita' centralizzata e Rinnovo.",
       "nessuna_stanza": "Aggiungi almeno una stanza prima di continuare."
     },
     "abort": {
@@ -122,6 +123,9 @@
     "abort": {
       "nessun_gruppo": "Nessun gruppo configurato.",
       "nessun_appartamento": "Nessun appartamento configurato."
+    },
+    "error": {
+      "campi_mancanti": "Non tutte le entita' della stanza sono state trovate automaticamente. Compila manualmente Temperatura salvata, Modalita' centralizzata e Rinnovo."
     }
   },
   "services": {
