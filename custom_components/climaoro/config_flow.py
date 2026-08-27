@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 from typing import Any
 
 from homeassistant import config_entries
@@ -69,6 +70,8 @@ from .const import (
     default_appartamenti,
     migrate_options,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 GROUP_OPTIONS = [{"value": g, "label": GROUP_LABELS[g]} for g in GROUPS]
 
@@ -232,8 +235,11 @@ async def _build_room_record(
         else:
             mancanti.append(chiave)
 
-    if mancanti:
-        selezioni.update(await _resolve_siblings(hass, clima))
+    try:
+        if mancanti:
+            selezioni.update(await _resolve_siblings(hass, clima))
+    except Exception:  # noqa: BLE001
+        _LOGGER.exception("Climaoro: fallita risoluzione automatica delle entita' sorelle")
 
     valido = True
     for chiave in (CONF_TEMP_SALVATA, CONF_MODALITA, CONF_RINNOVO):
@@ -245,7 +251,12 @@ async def _build_room_record(
     if not valido:
         return {"base": "campi_mancanti"}
 
-    uids = await _resolve_entity_uids(hass, selezioni)
+    try:
+        uids = await _resolve_entity_uids(hass, selezioni)
+    except Exception:  # noqa: BLE001
+        _LOGGER.exception("Climaoro: fallita risoluzione degli unique_id")
+        return {"base": "unknown"}
+
     for chiave in (CONF_CLIMA, CONF_TEMP_SALVATA, CONF_MODALITA, CONF_RINNOVO):
         if chiave in selezioni:
             uid_chiave = f"{chiave}_uid"
