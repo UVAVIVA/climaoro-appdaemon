@@ -54,7 +54,7 @@ Ciascun gruppo applica impostazioni omogenee per le stanze afferenti:
 
 Ogni appartamento dispone del proprio switch Master (`climaoro_attivo` / `climaoro_appartamento_attivo`) e della relativa soglia minima dei pesi per l'attivazione del generatore.
 
-<img src="images/1db5527f-78d9-409d-a261-c671e4c6de2f.jpg" alt="CLIMAORO Integrazione 1" width="30%"> <img src="images/33353339-64d9-4326-be92-56ce8b86829d.jpg" alt="CLIMAORO Integrazione 2" width="30%"> <img src="images/981c700f-fcf9-4421-9e54-771fbd2c944b.jpg" alt="CLIMAORO Integrazione 3" width="30%">
+<img src="images/1db5527f-78d9-409d-a261-c671e4c6de2f.jpg" alt="CLIMAORO Integrazione 1" width="30%"> <img src="images/33353339-64d9-4326-be92-56ce8b86829d.jpg" alt="CLIMAORO Integrazione 2" width="30%"> <img src="images/9d1398b8-cd59-448f-8f3a-ae730ce09b0d.jpg" alt="CLIMAORO Integrazione 3" width="30%">
 
 ---
 
@@ -105,7 +105,7 @@ L'app AppDaemon valuta lo stato dell'impianto a intervalli regolari (default: 60
 - **Ri-assert Automatico**: Ogni 1200s viene riconfermata la modalità centralizzata su tutti i termostati inclusi per recuperare da eventuali riavvii hardware dei dispositivi.
 - **Aggiornamento Istantaneo**: Qualsiasi variazione dei parametri da interfaccia scatena l'evento `climaoro_config_updated`, forzando l'aggiornamento immediato in AppDaemon senza attendere il refresh di background.
 
-<img src="images/9d1398b8-cd59-448f-8f3a-ae730ce09b0d.jpg" alt="CLIMAORO Integrazione 4" width="30%"> <img src="images/ff26367c-6708-44a2-8128-43e8a244b778.jpg" alt="CLIMAORO Integrazione 5" width="30%">
+<img src="images/981c700f-fcf9-4421-9e54-771fbd2c944b.jpg" alt="CLIMAORO Integrazione 4" width="30%"> <img src="images/ff26367c-6708-44a2-8128-43e8a244b778.jpg" alt="CLIMAORO Integrazione 5" width="30%">
 
 ---
 
