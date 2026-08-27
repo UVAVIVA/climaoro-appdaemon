@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import copy
-import logging
 from typing import Any
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
 import homeassistant.helpers.config_validation as cv
@@ -70,8 +68,6 @@ from .const import (
     default_appartamenti,
     migrate_options,
 )
-
-_LOGGER = logging.getLogger(__name__)
 
 GROUP_OPTIONS = [{"value": g, "label": GROUP_LABELS[g]} for g in GROUPS]
 
@@ -139,129 +135,6 @@ async def _resolve_entity_uids(
         entry = er_registry.async_get(entity_id)
         uids[chiave] = entry.unique_id if entry else None
     return uids
-
-
-async def _resolve_siblings(
-    hass: HomeAssistant, clima: str
-) -> dict[str, str]:
-    """Dato il climate, ricava le entity sorelle (temp_salvata/modalita/rinnovo).
-
-    Strategia, in ordine:
-      1. convenzione di nome dal climate (es. 'termostato_1_climatizzazione' ->
-         'termostato_1_temperatura_salvata', ...);
-      2. fallback: se nel device del climate esiste UNA SOLA entita' del tipo
-         richiesto, la usa.
-
-    Restituisce solo i campi risolti con certezza; i campi non trovati NON
-    compaiono (l'utente li compila a mano).
-    """
-    base = None
-    if clima:
-        core = clima.split(".", 1)[-1]
-        if core.endswith("_climatizzazione"):
-            base = core[: -len("_climatizzazione")]
-        else:
-            base = core
-
-    er_registry = er.async_get(hass)
-
-    def by_name(piattaforma: str, pattern: str) -> str | None:
-        if not base:
-            return None
-        eid = f"{piattaforma}.{base}{pattern}"
-        return eid if er_registry.async_get(eid) else None
-
-    risultato: dict[str, str] = {}
-
-    # 1) Convenzione di nome.
-    candidati = {
-        CONF_TEMP_SALVATA: by_name("number", "_temperatura_salvata"),
-        CONF_MODALITA: by_name("switch", "_modalita_centralizzata"),
-        CONF_RINNOVO: by_name("button", "_rinnova_modalita_centralizzata"),
-    }
-    for chiave, eid in candidati.items():
-        if eid:
-            risultato[chiave] = eid
-
-    # 2) Fallback per device (solo per i campi non risolti con la convenzione).
-    clima_entry = er_registry.async_get(clima) if clima else None
-    if clima_entry is not None and clima_entry.device_id:
-        dr_registry = dr.async_get(hass)
-        device = dr_registry.async_get(clima_entry.device_id)
-        if device is not None:
-            per_tipo: dict[str, list[str]] = {}
-            for entity_id in device.entities:
-                eentry = er_registry.async_get(entity_id)
-                if eentry is None:
-                    continue
-                per_tipo.setdefault(eentry.platform or "", []).append(entity_id)
-            for chiave, piattaforma in (
-                (CONF_TEMP_SALVATA, "number"),
-                (CONF_MODALITA, "switch"),
-                (CONF_RINNOVO, "button"),
-            ):
-                if chiave in risultato:
-                    continue
-                lista = [e for e in per_tipo.get(piattaforma, []) if not e.startswith("input_")]
-                if len(lista) == 1:
-                    risultato[chiave] = lista[0]
-
-    return risultato
-
-
-async def _build_room_record(
-    hass: HomeAssistant,
-    nome: str,
-    user_input: dict[str, Any],
-    clima: str,
-) -> dict[str, Any] | dict[str, str]:
-    """Costruisce il record di una stanza, auto-risolvendo i campi vuoti."""
-    doc: dict[str, Any] = {
-        "id": _slug(nome),
-        CONF_NOME: nome,
-        CONF_APPARTAMENTO: user_input.get(CONF_APPARTAMENTO, APPARTAMENTO_CASA),
-        CONF_GRUPPO: user_input[CONF_GRUPPO],
-        CONF_CLIMA: clima,
-        CONF_PESO: user_input.get(CONF_PESO, DEFAULT_PESO),
-        CONF_INCLUSIONE: user_input.get(CONF_INCLUSIONE, DEFAULT_INCLUSIONE),
-    }
-
-    selezioni: dict[str, str] = {CONF_CLIMA: clima}
-    mancanti: list[str] = []
-    for chiave in (CONF_TEMP_SALVATA, CONF_MODALITA, CONF_RINNOVO):
-        dato = (user_input.get(chiave) or "").strip()
-        if dato:
-            selezioni[chiave] = dato
-        else:
-            mancanti.append(chiave)
-
-    try:
-        if mancanti:
-            selezioni.update(await _resolve_siblings(hass, clima))
-    except Exception:  # noqa: BLE001
-        _LOGGER.exception("Climaoro: fallita risoluzione automatica delle entita' sorelle")
-
-    valido = True
-    for chiave in (CONF_TEMP_SALVATA, CONF_MODALITA, CONF_RINNOVO):
-        if chiave in selezioni and selezioni.get(chiave):
-            doc[chiave] = selezioni[chiave]
-        else:
-            valido = False
-
-    if not valido:
-        return {"base": "campi_mancanti"}
-
-    try:
-        uids = await _resolve_entity_uids(hass, selezioni)
-    except Exception:  # noqa: BLE001
-        _LOGGER.exception("Climaoro: fallita risoluzione degli unique_id")
-        return {"base": "unknown"}
-
-    for chiave in (CONF_CLIMA, CONF_TEMP_SALVATA, CONF_MODALITA, CONF_RINNOVO):
-        if chiave in selezioni:
-            uid_chiave = f"{chiave}_uid"
-            doc[uid_chiave] = uids.get(chiave)
-    return doc
 
 
 class ClimaoroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -403,12 +276,36 @@ class ClimaoroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             elif any(r[CONF_NOME].lower() == nome.lower() for r in self._rooms):
                 errors[CONF_NOME] = "nome_duplicato"
             else:
-                clima = user_input[CONF_CLIMA]
-                salvatore = await _build_room_record(self.hass, nome, user_input, clima)
-                if isinstance(salvatore, dict):
-                    self._rooms.append(salvatore)
-                    return await self.async_step_rooms()
-                errors.update(salvatore)
+                uids = await _resolve_entity_uids(
+                    self.hass,
+                    {
+                        CONF_CLIMA: user_input[CONF_CLIMA],
+                        CONF_TEMP_SALVATA: user_input[CONF_TEMP_SALVATA],
+                        CONF_MODALITA: user_input[CONF_MODALITA],
+                        CONF_RINNOVO: user_input[CONF_RINNOVO],
+                    },
+                )
+                self._rooms.append(
+                    {
+                        "id": _slug(nome),
+                        CONF_NOME: nome,
+                        CONF_APPARTAMENTO: user_input.get(
+                            CONF_APPARTAMENTO, APPARTAMENTO_CASA
+                        ),
+                        CONF_GRUPPO: user_input[CONF_GRUPPO],
+                        CONF_CLIMA: user_input[CONF_CLIMA],
+                        CONF_TEMP_SALVATA: user_input[CONF_TEMP_SALVATA],
+                        CONF_MODALITA: user_input[CONF_MODALITA],
+                        CONF_RINNOVO: user_input[CONF_RINNOVO],
+                        CONF_CLIMA_UID: uids.get(CONF_CLIMA),
+                        CONF_TEMP_SALVATA_UID: uids.get(CONF_TEMP_SALVATA),
+                        CONF_MODALITA_UID: uids.get(CONF_MODALITA),
+                        CONF_RINNOVO_UID: uids.get(CONF_RINNOVO),
+                        CONF_PESO: user_input.get(CONF_PESO, DEFAULT_PESO),
+                        CONF_INCLUSIONE: user_input.get(CONF_INCLUSIONE, DEFAULT_INCLUSIONE),
+                    }
+                )
+                return await self.async_step_rooms()
 
         schema = {
             vol.Required(CONF_NOME): str,
@@ -417,9 +314,9 @@ class ClimaoroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ): _appartamento_selector({}, APPARTAMENTI_DEFAULT),
             vol.Required(CONF_GRUPPO): _gruppo_selector(),
             vol.Required(CONF_CLIMA): _entity_selector(["climate"]),
-            vol.Optional(CONF_TEMP_SALVATA): _entity_selector(["number"]),
-            vol.Optional(CONF_MODALITA): _entity_selector(["switch"]),
-            vol.Optional(CONF_RINNOVO): _entity_selector(["button"]),
+            vol.Required(CONF_TEMP_SALVATA): _entity_selector(["number"]),
+            vol.Required(CONF_MODALITA): _entity_selector(["switch"]),
+            vol.Required(CONF_RINNOVO): _entity_selector(["button"]),
             vol.Required(CONF_PESO, default=DEFAULT_PESO): _numero(PESO_MIN, PESO_MAX, PESO_STEP),
             vol.Required(CONF_INCLUSIONE, default=DEFAULT_INCLUSIONE): selector.BooleanSelector(),
         }
@@ -579,13 +476,37 @@ class ClimaoroOptionsFlow(config_entries.OptionsFlow):
             elif any(r[CONF_NOME].lower() == nome.lower() for r in rooms):
                 errors[CONF_NOME] = "nome_duplicato"
             else:
-                clima = user_input[CONF_CLIMA]
-                salvatore = await _build_room_record(self.hass, nome, user_input, clima)
-                if isinstance(salvatore, dict):
-                    rooms = list(rooms) + [salvatore]
-                    self._data[CONF_ROOMS] = rooms
-                    return await self.async_step_rooms()
-                errors.update(salvatore)
+                uids = await _resolve_entity_uids(
+                    self.hass,
+                    {
+                        CONF_CLIMA: user_input[CONF_CLIMA],
+                        CONF_TEMP_SALVATA: user_input[CONF_TEMP_SALVATA],
+                        CONF_MODALITA: user_input[CONF_MODALITA],
+                        CONF_RINNOVO: user_input[CONF_RINNOVO],
+                    },
+                )
+                rooms = list(rooms) + [
+                    {
+                        "id": _slug(nome),
+                        CONF_NOME: nome,
+                        CONF_APPARTAMENTO: user_input.get(
+                            CONF_APPARTAMENTO, APPARTAMENTO_CASA
+                        ),
+                        CONF_GRUPPO: user_input[CONF_GRUPPO],
+                        CONF_CLIMA: user_input[CONF_CLIMA],
+                        CONF_TEMP_SALVATA: user_input[CONF_TEMP_SALVATA],
+                        CONF_MODALITA: user_input[CONF_MODALITA],
+                        CONF_RINNOVO: user_input[CONF_RINNOVO],
+                        CONF_CLIMA_UID: uids.get(CONF_CLIMA),
+                        CONF_TEMP_SALVATA_UID: uids.get(CONF_TEMP_SALVATA),
+                        CONF_MODALITA_UID: uids.get(CONF_MODALITA),
+                        CONF_RINNOVO_UID: uids.get(CONF_RINNOVO),
+                        CONF_PESO: user_input.get(CONF_PESO, DEFAULT_PESO),
+                        CONF_INCLUSIONE: user_input.get(CONF_INCLUSIONE, DEFAULT_INCLUSIONE),
+                    }
+                ]
+                self._data[CONF_ROOMS] = rooms
+                return await self.async_step_rooms()
 
         schema = {
             vol.Required(CONF_NOME): str,
@@ -594,9 +515,9 @@ class ClimaoroOptionsFlow(config_entries.OptionsFlow):
             ): _appartamento_selector(self._data),
             vol.Required(CONF_GRUPPO): _gruppo_selector(),
             vol.Required(CONF_CLIMA): _entity_selector(["climate"]),
-            vol.Optional(CONF_TEMP_SALVATA): _entity_selector(["number"]),
-            vol.Optional(CONF_MODALITA): _entity_selector(["switch"]),
-            vol.Optional(CONF_RINNOVO): _entity_selector(["button"]),
+            vol.Required(CONF_TEMP_SALVATA): _entity_selector(["number"]),
+            vol.Required(CONF_MODALITA): _entity_selector(["switch"]),
+            vol.Required(CONF_RINNOVO): _entity_selector(["button"]),
             vol.Required(CONF_PESO, default=DEFAULT_PESO): _numero(PESO_MIN, PESO_MAX, PESO_STEP),
             vol.Required(CONF_INCLUSIONE, default=DEFAULT_INCLUSIONE): selector.BooleanSelector(),
         }

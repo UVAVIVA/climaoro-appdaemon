@@ -19,7 +19,7 @@
       },
       "add_room": {
         "title": "Add room",
-        "description": "Select the room entities (like in automations). If you leave Saved temperature, Centralized mode and Mode renewal empty, ClimaORO will try to find the related entities automatically: make sure they are consistent, otherwise fill in all the fields directly.\n\n{riepilogo}",
+        "description": "Select the room entities (like in automations).\n\n{riepilogo}",
         "data": {
           "nome": "Room name",
           "appartamento": "Apartment",
@@ -69,7 +69,6 @@
       "nessun_gruppo": "Select at least one group.",
       "nome_obbligatorio": "The room name is required.",
       "nome_duplicato": "A room with this name already exists.",
-      "campi_mancanti": "Not all room entities were found automatically. Fill in Saved temperature, Centralized mode and Mode renewal manually.",
       "nessuna_stanza": "Add at least one room before continuing."
     },
     "abort": {
@@ -123,9 +122,6 @@
     "abort": {
       "nessun_gruppo": "No group configured.",
       "nessun_appartamento": "No apartment configured."
-    },
-    "error": {
-      "campi_mancanti": "Not all room entities were found automatically. Fill in Saved temperature, Centralized mode and Mode renewal manually."
     }
   },
   "services": {
