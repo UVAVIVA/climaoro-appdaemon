@@ -7,6 +7,7 @@
 
 - **Sito web:** [https://UVAVIVA.github.io/CLIMAORO/](https://UVAVIVA.github.io/CLIMAORO/)
 - **Progetto principale:** [https://github.com/UVAVIVA/CLIMAORO](https://github.com/UVAVIVA/CLIMAORO)
+- **Installazione e Configurazione:** [Ancora alla sezione nel README](https://github.com/UVAVIVA/climaoro-appdaemon/blob/main/README.md#installazione-e-configurazione)
 
 ---
 
