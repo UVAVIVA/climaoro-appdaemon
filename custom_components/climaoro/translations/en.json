@@ -19,12 +19,18 @@
       },
       "add_room": {
         "title": "Add room",
-        "description": "Select the room entities (like in automations).\n\n{riepilogo}",
+        "description": "Name the room, choose the group and the thermostat.\n\n{riepilogo}",
         "data": {
           "nome": "Room name",
           "appartamento": "Apartment",
           "gruppo": "Group",
-          "clima": "Thermostat (climatizzazione)",
+          "clima": "Thermostat (climatizzazione)"
+        }
+      },
+      "add_room_entities": {
+        "title": "Entities of {nome}",
+        "description": "Check the thermostat entities: coherent siblings are already suggested. Make sure they are correct and confirm.",
+        "data": {
           "temp_salvata": "Saved temperature",
           "modalita": "Centralized mode",
           "rinnovo": "Mode renewal",
@@ -88,6 +94,27 @@
         "title": "Rooms",
         "data": {
           "scelta": "Action"
+        }
+      },
+      "add_room": {
+        "title": "Add room",
+        "description": "Name the room, choose the group and the thermostat.",
+        "data": {
+          "nome": "Room name",
+          "appartamento": "Apartment",
+          "gruppo": "Group",
+          "clima": "Thermostat (climatizzazione)"
+        }
+      },
+      "add_room_entities": {
+        "title": "Entities of {nome}",
+        "description": "Check the thermostat entities: coherent siblings are already suggested. Make sure they are correct and confirm.",
+        "data": {
+          "temp_salvata": "Saved temperature",
+          "modalita": "Centralized mode",
+          "rinnovo": "Mode renewal",
+          "peso": "Weight",
+          "inclusione": "Included"
         }
       },
       "select_apartment": {
