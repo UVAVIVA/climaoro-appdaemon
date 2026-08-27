@@ -1,0 +1,8 @@
+{
+  "name": "ClimaORO",
+  "domain": "climaoro",
+  "content_in_root": false,
+  "render_readme": true,
+  "country": "IT",
+  "version": "0.1.0"
+}
