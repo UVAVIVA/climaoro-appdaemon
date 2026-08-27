@@ -355,47 +355,13 @@ async def _ws_run(hass: HomeAssistant, func) -> str | None:
 
 
 async def async_ensure_dashboard(hass: HomeAssistant, config: dict) -> str | None:
-    """Crea/aggiorna la dashboard Climaoro."""
-    try:
-        from homeassistant.components.lovelace import LOVELACE_DATA
-        from homeassistant.components.lovelace.dashboard import (
-            DASHBOARDS_STORAGE_KEY,
-            DASHBOARDS_STORAGE_VERSION,
-            LovelaceStorage,
-        )
-        from homeassistant.helpers.storage import Store
+    """Crea/aggiorna la dashboard Climaoro via API WebSocket autenticata.
 
-        manager = hass.data.get(LOVELACE_DATA)
-        dashboards = getattr(manager, "dashboards", None) if manager else None
-        if isinstance(dashboards, dict):
-            dash = dashboards.get(DASHBOARD_URL_PATH)
-            if dash is None:
-                dash = LovelaceStorage(hass, DASHBOARD_URL_PATH)
-                dashboards[DASHBOARD_URL_PATH] = dash
-                store = Store(
-                    hass, DASHBOARDS_STORAGE_VERSION, DASHBOARDS_STORAGE_KEY
-                )
-                reg = await store.async_load() or {"items": []}
-                if not any(
-                    i.get("url_path") == DASHBOARD_URL_PATH
-                    for i in reg.get("items", [])
-                ):
-                    reg.setdefault("items", []).append(
-                        {
-                            "id": "climaoro_panel",
-                            "url_path": DASHBOARD_URL_PATH,
-                            "mode": "storage",
-                            "title": DASHBOARD_TITLE,
-                            "require_admin": False,
-                            "show_in_sidebar": True,
-                        }
-                    )
-                    await store.async_save(reg)
-            await dash.async_save(config)
-            return "ok (lovelace internals)"
-    except Exception as err:  # noqa: BLE001
-        _LOGGER.warning("Dashboard via internals fallita (%s), provo websocket", err)
-
+    Usa lo stesso WebSocket dello script esterno make_dashboard.py,
+    autenticandosi con un token generato internamente (async_generate_token
+    + _ws_run): evita le API interne di HA (LovelaceStorage, Store, ecc.)
+    che cambiano tra versioni, quindi funziona su qualsiasi installazione.
+    """
     async def _save(ws):
         await ws.send(
             json.dumps(
@@ -405,6 +371,8 @@ async def async_ensure_dashboard(hass: HomeAssistant, config: dict) -> str | Non
                     "url_path": DASHBOARD_URL_PATH,
                     "mode": "storage",
                     "title": DASHBOARD_TITLE,
+                    "require_admin": False,
+                    "show_in_sidebar": True,
                 }
             )
         )
