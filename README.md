@@ -7,8 +7,6 @@
 
 - **Sito web:** [https://UVAVIVA.github.io/CLIMAORO/](https://UVAVIVA.github.io/CLIMAORO/)
 - **Progetto principale:** [https://github.com/UVAVIVA/CLIMAORO](https://github.com/UVAVIVA/CLIMAORO)
-- **Componenti ESPHome:** [https://github.com/UVAVIVA/climaoro-components](https://github.com/UVAVIVA/climaoro-components)
-- **Codice sorgente:** [https://github.com/UVAVIVA/climaoro-appdaemon](https://github.com/UVAVIVA/climaoro-appdaemon)
 
 ---
 
@@ -56,9 +54,11 @@ Ciascun gruppo applica impostazioni omogenee per le stanze afferenti:
 
 Ogni appartamento dispone del proprio switch Master (`climaoro_attivo` / `climaoro_appartamento_attivo`) e della relativa soglia minima dei pesi per l'attivazione del generatore.
 
-<img src="images/00b52f18-fcd2-4f22-bc78-fc6dbafb9023.jpg" alt="CLIMAORO Integrazione 1" width="30%">
+<img src="images/1db5527f-78d9-409d-a261-c671e4c6de2f.jpg" alt="CLIMAORO Integrazione 1" width="30%">
 
-<img src="images/48d5ad94-720a-4e18-af88-9c372f740eee.jpg" alt="CLIMAORO Integrazione 2" width="30%">
+<img src="images/33353339-64d9-4326-be92-56ce8b86829d.jpg" alt="CLIMAORO Integrazione 2" width="30%">
+
+<img src="images/981c700f-fcf9-4421-9e54-771fbd2c944b.jpg" alt="CLIMAORO Integrazione 3" width="30%">
 
 ---
 
@@ -109,36 +109,37 @@ L'app AppDaemon valuta lo stato dell'impianto a intervalli regolari (default: 60
 - **Ri-assert Automatico**: Ogni 1200s viene riconfermata la modalità centralizzata su tutti i termostati inclusi per recuperare da eventuali riavvii hardware dei dispositivi.
 - **Aggiornamento Istantaneo**: Qualsiasi variazione dei parametri da interfaccia scatena l'evento `climaoro_config_updated`, forzando l'aggiornamento immediato in AppDaemon senza attendere il refresh di background.
 
-<img src="images/91745b8e-12b7-4d81-99e9-c87701b7c1f8.jpg" alt="CLIMAORO Integrazione 3" width="30%">
+<img src="images/9d1398b8-cd59-448f-8f3a-ae730ce09b0d.jpg" alt="CLIMAORO Integrazione 4" width="30%">
 
-<img src="images/a965ce88-6679-4776-bdce-42e957b538df.jpg" alt="CLIMAORO Integrazione 4" width="30%">
+<img src="images/ff26367c-6708-44a2-8128-43e8a244b778.jpg" alt="CLIMAORO Integrazione 5" width="30%">
 
 ---
 
 ## Installazione e Configurazione
 
-### 1. Custom Component
+Il progetto si installa in un **unico passo**: il Custom Component. L'integrazione si occupa automaticamente di tutto il resto (file di configurazione di AppDaemon, token, dashboard e card del calendario).
+
+### 1. Prerequisito
+
+Installare l'add-on **AppDaemon** da *Impostazioni -> Componenti aggiuntivi -> Add-on Store* in Home Assistant (obbligatorio: è il motore decisionale del sistema).
+
+### 2. Custom Component
 
 1. Copiare la cartella `custom_components/climaoro/` all'interno della directory `<config>/custom_components/` del server Home Assistant.
 2. Riavviare Home Assistant.
 3. Completare la procedura guidata da **Impostazioni -> Dispositivi e Servizi -> Aggiungi Integrazione -> Climaoro**.
 
-### 2. AppDaemon
+### 3. Provisioning Automatico
 
-Copiare `appdaemon/climaoro.py` e `appdaemon/apps.yaml` all'interno della cartella dell'Add-on (`<addon_configs>/<id_appdaemon>/apps/`).
+Al termine del wizard, l'integrazione esegue da sola (senza intervento manuale) tutta la configurazione:
 
-Esempio di configurazione `apps.yaml`:
+- genera un **long-lived token** per l'accesso di AppDaemon;
+- scrive **automaticamente** `climaoro.py` + `apps.yaml` nella cartella `apps/` dell'add-on AppDaemon;
+- **riavvia** l'add-on AppDaemon per caricare la nuova configurazione;
+- crea/aggiorna la **dashboard Lovelace "Climaoro"** (`/climaoro-panel`) con tutte le viste per appartamenti e gruppi;
+- registra la risorsa frontend della **card calendario 7x24** editabile.
 
-```yaml
-climaoro:
-  module: climaoro
-  class: Climaoro
-  ha_url: http://supervisor/core
-  cycle_sec: 60
-  rinnovo_sec: 240
-  check_centralizzata_sec: 1200
-  refresh_sec: 600
-```
+L'utente **non deve** creare o copiare a mano alcun file `.py` o `apps.yaml`: li genera l'integrazione. La card del calendario, una volta registrata, è direttamente modificabile tramite l'interfaccia della dashboard.
 
 ---
 
