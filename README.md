@@ -115,13 +115,13 @@ Il progetto si installa in un **unico passo**: il Custom Component. L'integrazio
 
 ### 1. Prerequisito: Add-on AppDaemon
 
-Installare l'add-on **AppDaemon** (Home Assistant Community Add-ons) dall'**Add-on Store** di Home Assistant, tramite il seguente indirizzo:
+Installare l'add-on **AppDaemon** (Home Assistant Community Add-ons) dall'**Add-on Store** di Home Assistant, che lo include di default:
 
-```
-https://my.home-assistant.io/redirect/supervisor_addon/?addon=a0d7b954_appdaemon&repository_url=https%3A%2F%2Fgithub.com%2Fhassio-addons%2Frepository
-```
+1. Aprire *Impostazioni -> Componenti aggiuntivi -> Add-on Store*.
+2. Cercare **AppDaemon** nella sezione *Home Assistant Community Add-ons*.
+3. Cliccare **Installa**, poi **Avvia**.
 
-In alternativa: *Impostazioni -> Componenti aggiuntivi -> Add-on Store* e cercare **AppDaemon** (repository Community Add-ons: `https://github.com/hassio-addons/repository`). È obbligatorio: è il motore decisionale del sistema.
+È obbligatorio: è il motore decisionale del sistema.
 
 ### 2. Custom Component (via HACS)
 
