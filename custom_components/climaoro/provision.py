@@ -355,13 +355,78 @@ async def _ws_run(hass: HomeAssistant, func) -> str | None:
 
 
 async def async_ensure_dashboard(hass: HomeAssistant, config: dict) -> str | None:
-    """Crea/aggiorna la dashboard Climaoro via API WebSocket autenticata.
+    """Crea/aggiorna la dashboard Climaoro, provando piu' strade robuste.
 
-    Usa lo stesso WebSocket dello script esterno make_dashboard.py,
-    autenticandosi con un token generato internamente (async_generate_token
-    + _ws_run): evita le API interne di HA (LovelaceStorage, Store, ecc.)
-    che cambiano tra versioni, quindi funziona su qualsiasi installazione.
+    Ordine dei tentativi (ognuno logga con precisione l'esito, cosi' da
+    individuare subito la causa in caso di fallimento):
+
+      1) Lovelace collection ufficiale (aggiorna memoria + storage, no rete);
+      2) self-connection WebSocket via rete (fallback storico).
     """
+    # -- Via 1: Lovelace collection ufficiale (aggiorna memoria + storage) --
+    try:
+        from homeassistant.components.lovelace import LOVELACE_DATA
+
+        manager = hass.data.get(LOVELACE_DATA)
+        dashboards = getattr(manager, "dashboards", None)
+        if dashboards is not None:
+            try:
+                existing = await dashboards.async_get_item(DASHBOARD_URL_PATH)
+            except Exception:  # noqa: BLE001
+                existing = None
+            try:
+                if existing is None:
+                    await dashboards.async_create_item(
+                        {
+                            "url_path": DASHBOARD_URL_PATH,
+                            "mode": "storage",
+                            "title": DASHBOARD_TITLE,
+                            "require_admin": False,
+                            "show_in_sidebar": True,
+                        }
+                    )
+                    created = True
+                else:
+                    await dashboards.async_update_item(
+                        DASHBOARD_URL_PATH,
+                        {
+                            "title": DASHBOARD_TITLE,
+                            "require_admin": False,
+                            "show_in_sidebar": True,
+                        },
+                    )
+                    created = False
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.error("Dashboard collection create/update fallita: %s", err)
+            else:
+                # Salva la configurazione (le card) tramite lo storage runtime.
+                try:
+                    dash = await dashboards.async_get_item(DASHBOARD_URL_PATH)
+                    saver = getattr(dash, "async_save", None)
+                    if saver is None:
+                        storage = getattr(manager, "storage", None)
+                        dash = getattr(storage, "data", {}).get(DASHBOARD_URL_PATH)
+                        saver = getattr(dash, "async_save", None)
+                    if saver is not None:
+                        await saver(config)
+                    else:
+                        _LOGGER.error(
+                            "Nessun metodo async_save disponibile per la config"
+                        )
+                        return None
+                except Exception as err:  # noqa: BLE001
+                    _LOGGER.error("Salvataggio config via collection fallito: %s", err)
+                    return None
+                return (
+                    f"ok (collection{' creato' if created else ' aggiornato'})"
+                )
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.warning(
+            "Via 1 (collection) non disponibile (%s), provo websocket interno",
+            err,
+        )
+
+    # -- Via 2: self-connection via rete (fallback storico) --
     async def _save(ws):
         await ws.send(
             json.dumps(
