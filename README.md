@@ -128,19 +128,22 @@ Installare l'add-on **AppDaemon** (Home Assistant Community Add-ons) dall'**Add-
 
 ### 2. Custom Component (via HACS)
 
-Il custom component CLIMAORO si installa tramite **HACS** come repository personalizzato:
+Il custom component CLIMAORO si installa tramite **HACS** come repository personalizzato.
+
+**Installazione in un clic** (apri questo link nel browser del dispositivo collegato a Home Assistant):
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=UVAVIVA&repository=climaoro-appdaemon&category=integration)
+
+Oppure **aggiungilo manualmente**:
 
 1. In Home Assistant aprire **HACS -> Integrazioni**.
 2. Selezionare i tre puntini in alto a destra e scegliere **Custom repositories**.
-3. Inserire l'indirizzo del repository:
-   ```
-   https://github.com/UVAVIVA/climaoro-appdaemon
-   ```
+3. Inserire l'indirizzo del repository: `https://github.com/UVAVIVA/climaoro-appdaemon`
 4. Selezionare la categoria **Integrazione** e cliccare **Add**.
 5. Trovare **ClimaORO** in HACS (sezione Integrazioni) e cliccare **Download**.
 6. **Riavviare Home Assistant**. (Il repository richiede di essere pubblico per essere scaricato da HACS.)
 
-Poi completare la procedura guidata da **Impostazioni -> Dispositivi e Servizi -> Aggiungi Integrazione -> Climaoro**.
+7. Poi completare la procedura guidata da **Impostazioni -> Dispositivi e Servizi -> Aggiungi Integrazione -> Climaoro**.
 
 ### 3. Provisioning Automatico
 
