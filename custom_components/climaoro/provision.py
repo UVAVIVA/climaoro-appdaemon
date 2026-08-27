@@ -363,21 +363,33 @@ async def async_ensure_dashboard(hass: HomeAssistant, config: dict) -> str | Non
       1) Lovelace collection ufficiale (aggiorna memoria + storage, no rete);
       2) self-connection WebSocket via rete (fallback storico).
     """
-    # -- Via 1: Lovelace collection ufficiale (aggiorna memoria + storage) --
+    # -- Via 1: registrazione dashboard via storage HA (aggiorna storage su
+    #    disco; la sidebar viene aggiornata dalla UI/al prossimo reload) --
     try:
         from homeassistant.components.lovelace import LOVELACE_DATA
+        from homeassistant.components.lovelace.dashboard import (
+            DASHBOARDS_STORAGE_KEY,
+            DASHBOARDS_STORAGE_VERSION,
+            LovelaceStorage,
+        )
+        from homeassistant.helpers.storage import Store
 
         manager = hass.data.get(LOVELACE_DATA)
         dashboards = getattr(manager, "dashboards", None)
-        if dashboards is not None:
-            try:
-                existing = await dashboards.async_get_item(DASHBOARD_URL_PATH)
-            except Exception:  # noqa: BLE001
-                existing = None
-            try:
-                if existing is None:
-                    await dashboards.async_create_item(
+        if isinstance(dashboards, dict):
+            dash = dashboards.get(DASHBOARD_URL_PATH)
+            if dash is None:
+                dash = LovelaceStorage(hass, DASHBOARD_URL_PATH)
+                dashboards[DASHBOARD_URL_PATH] = dash
+                store = Store(hass, DASHBOARDS_STORAGE_VERSION, DASHBOARDS_STORAGE_KEY)
+                reg = await store.async_load() or {"items": []}
+                if not any(
+                    i.get("url_path") == DASHBOARD_URL_PATH
+                    for i in reg.get("items", [])
+                ):
+                    reg.setdefault("items", []).append(
                         {
+                            "id": "climaoro_panel",
                             "url_path": DASHBOARD_URL_PATH,
                             "mode": "storage",
                             "title": DASHBOARD_TITLE,
@@ -385,45 +397,19 @@ async def async_ensure_dashboard(hass: HomeAssistant, config: dict) -> str | Non
                             "show_in_sidebar": True,
                         }
                     )
-                    created = True
-                else:
-                    await dashboards.async_update_item(
-                        DASHBOARD_URL_PATH,
-                        {
-                            "title": DASHBOARD_TITLE,
-                            "require_admin": False,
-                            "show_in_sidebar": True,
-                        },
-                    )
-                    created = False
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.error("Dashboard collection create/update fallita: %s", err)
-            else:
-                # Salva la configurazione (le card) tramite lo storage runtime.
+                    await store.async_save(reg)
+            await dash.async_save(config)
+            # Prova a far ricaricare le dashboard (senza bloccare se non esiste).
+            reload = getattr(manager, "async_reload", None)
+            if reload is not None:
                 try:
-                    dash = await dashboards.async_get_item(DASHBOARD_URL_PATH)
-                    saver = getattr(dash, "async_save", None)
-                    if saver is None:
-                        storage = getattr(manager, "storage", None)
-                        dash = getattr(storage, "data", {}).get(DASHBOARD_URL_PATH)
-                        saver = getattr(dash, "async_save", None)
-                    if saver is not None:
-                        await saver(config)
-                    else:
-                        _LOGGER.error(
-                            "Nessun metodo async_save disponibile per la config"
-                        )
-                        return None
-                except Exception as err:  # noqa: BLE001
-                    _LOGGER.error("Salvataggio config via collection fallito: %s", err)
-                    return None
-                return (
-                    f"ok (collection{' creato' if created else ' aggiornato'})"
-                )
+                    await reload()
+                except Exception:  # noqa: BLE001
+                    pass
+            return "ok (lovelace internals)"
     except Exception as err:  # noqa: BLE001
         _LOGGER.warning(
-            "Via 1 (collection) non disponibile (%s), provo websocket interno",
-            err,
+            "Via 1 (storage internals) non disponibile (%s), provo websocket", err
         )
 
     # -- Via 2: self-connection via rete (fallback storico) --
