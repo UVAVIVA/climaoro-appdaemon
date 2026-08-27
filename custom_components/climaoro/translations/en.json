@@ -57,14 +57,7 @@
       },
       "global": {
         "title": "Global settings",
-        "description": "Choose the apartment whose master switch and weight threshold to configure.",
-        "data": {
-          "appartamento": "Apartment"
-        }
-      },
-      "edit_global": {
-        "title": "Global settings {nome}",
-        "description": "Master switch and weight threshold of the apartment.",
+        "description": "Set the master switch (active) and the weight threshold for all {n} apartments ({nomi}).",
         "data": {
           "attivo": "Active",
           "soglia_pesi": "Weight threshold"

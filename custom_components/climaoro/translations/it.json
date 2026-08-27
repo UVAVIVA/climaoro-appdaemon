@@ -57,14 +57,7 @@
       },
       "global": {
         "title": "Parametri globali",
-        "description": "Scegli l'appartamento di cui impostare master e soglia pesi.",
-        "data": {
-          "appartamento": "Appartamento"
-        }
-      },
-      "edit_global": {
-        "title": "Parametri globali {nome}",
-        "description": "Master e soglia pesi dell'appartamento.",
+        "description": "Imposta il master (attivo) e la soglia pesi per tutti i {n} appartamenti ({nomi}).",
         "data": {
           "attivo": "Attivo",
           "soglia_pesi": "Soglia pesi"

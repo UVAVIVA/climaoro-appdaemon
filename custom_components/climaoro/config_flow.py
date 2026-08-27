@@ -400,20 +400,7 @@ class ClimaoroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_global(self, user_input: dict[str, Any] | None = None):
-        """Scegli l'appartamento di cui impostare attivo + soglia pesi."""
-        if user_input is not None:
-            self._edit_app_id = user_input[CONF_APPARTAMENTO]
-            return await self.async_step_edit_global()
-
-        schema = {
-            vol.Required(CONF_APPARTAMENTO): _appartamento_selector(
-                {}, APPARTAMENTI_DEFAULT
-            )
-        }
-        return self.async_show_form(step_id="global", data_schema=vol.Schema(schema))
-
-    async def async_step_edit_global(self, user_input: dict[str, Any] | None = None):
-        """Attivo + soglia pesi dell'appartamento selezionato."""
+        """Attivo + soglia pesi applicati a TUTTI gli appartamenti."""
         if user_input is not None:
             if not self._rooms:
                 return self.async_abort(reason="nessuna_stanza")
@@ -424,11 +411,10 @@ class ClimaoroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
             }
             for ap in data["data"][CONF_APPARTAMENTI]:
-                if ap.get(CONF_ID) == self._edit_app_id:
-                    ap[CONF_ATTIVO] = user_input.get(CONF_ATTIVO, DEFAULT_ATTIVO)
-                    ap[CONF_SOGLIA_PESI] = user_input.get(
-                        CONF_SOGLIA_PESI, DEFAULT_SOGLIA_PESI
-                    )
+                ap[CONF_ATTIVO] = user_input.get(CONF_ATTIVO, DEFAULT_ATTIVO)
+                ap[CONF_SOGLIA_PESI] = user_input.get(
+                    CONF_SOGLIA_PESI, DEFAULT_SOGLIA_PESI
+                )
             return self.async_create_entry(title="ClimaORO", data=data)
 
         schema = {
@@ -438,9 +424,12 @@ class ClimaoroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ),
         }
         return self.async_show_form(
-            step_id="edit_global",
+            step_id="global",
             data_schema=vol.Schema(schema),
-            description_placeholders={"nome": _nome_app(self._edit_app_id)},
+            description_placeholders={
+                "n": len(APPARTAMENTI_DEFAULT),
+                "nomi": ", ".join(a.get(CONF_NOME) for a in APPARTAMENTI_DEFAULT),
+            },
         )
 
 
