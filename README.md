@@ -1,3 +1,5 @@
+> **NOTA:** questa integrazione (AppDaemon) è stata **sostituita** dalla nuova integrazione nativa: [**climaoro-integrazione-HA**](https://github.com/UVAVIVA/climaoro-integrazione-HA). Questo repo resta conservato per riferimento storico; per le nuove installazioni usare il nuovo repo.
+
 # CLIMAORO — Integrazione Home Assistant
 **Modulo Custom Component + AppDaemon per la gestione centralizzata ed intelligente del riscaldamento su Home Assistant.**
 
